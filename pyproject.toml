@@ -1,0 +1,18 @@
+[project]
+    name = "dav"
+version = "0.1.0"
+description = "Data analysis & visualization pipeline"
+readme = "README.md"
+requires-python = ">=3.11"
+
+authors = [
+  { name = "Lucas Joshua" }
+]
+
+dependencies = [
+  "pandas",
+  "matplotlib",
+  "seaborn",
+  "pandas-stubs~=3.0.0",
+  "pyarrow>=23.0.0",
+]
