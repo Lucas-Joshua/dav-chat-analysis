@@ -2,4 +2,4 @@
 /.idea/*
 /data/processed/*
 /uv.lock
-
+/notebooks/.ipynb_checkpoints/
