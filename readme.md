@@ -3,7 +3,7 @@
 ## Studentinformatie
 
 Naam: Lucas Joshua\
-Studentnummer: \[VUL HIER JE STUDENTNUMMER IN\]
+Studentnummer: 1905781
 
 ## Projectbeschrijving
 

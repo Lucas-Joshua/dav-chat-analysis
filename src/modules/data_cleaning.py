@@ -1,26 +1,23 @@
 import re
 import pandas as pd
 import logging
+import emoji
+
+from src.utils.emoji_utils import build_char_to_name_map
 
 logger = logging.getLogger(__name__)
+
+CHAR_TO_NAME = build_char_to_name_map()
 
 MESSAGE_PATTERN = re.compile(
     r"^\[(\d{2}-\d{2}-\d{4}), (\d{2}:\d{2}:\d{2})\] (.*?): (.*)$"
 )
 
-_INVISIBLE = [
-    "\u202f",
-    "\u200e",
-    "\u200f",
-    "\ufeff",
-]
+_INVISIBLE = ["\u202f", "\u200e", "\u200f", "\ufeff"]
 
 
 def normalize_sender(sender: str) -> str:
-    """Normalize sender names by removing invisible characters and excess whitespace."""
     sender = "" if sender is None else str(sender)
-
-    sender = sender.replace("~", "")
 
     for ch in _INVISIBLE:
         sender = sender.replace(ch, "")
@@ -31,16 +28,25 @@ def normalize_sender(sender: str) -> str:
     return sender.strip()
 
 
+def normalize_emojis(text: str) -> tuple[str, list[str]]:
+    if not isinstance(text, str):
+        return text, []
+
+    emoji_names = []
+
+    for match in emoji.emoji_list(text):
+        char = match["emoji"]
+        name = CHAR_TO_NAME.get(char)
+
+        if name:
+            text = text.replace(char, f" {name} ")
+            emoji_names.append(name)
+
+    return text.strip(), emoji_names
+
+
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Parse raw WhatsApp export into structured DataFrame
-    with columns: datetime, sender, message.
-    """
-
     logger.info("Starting data cleaning process")
-
-    if "raw" not in df.columns:
-        raise ValueError("Input DataFrame must contain a 'raw' column")
 
     messages = []
     current = None
@@ -60,18 +66,14 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
             current = {
                 "datetime": f"{date} {time}",
                 "sender": normalize_sender(sender),
-                "message": msg.strip(),
+                "original_message": msg.strip(),
             }
 
         elif current and stripped:
-            current["message"] += "\n" + stripped
+            current["original_message"] += "\n" + stripped
 
     if current:
         messages.append(current)
-
-    if not messages:
-        logger.warning("No valid messages detected in chat export")
-        return pd.DataFrame(columns=["datetime", "sender", "message"])
 
     df_clean = pd.DataFrame(messages)
 
@@ -81,10 +83,21 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
         errors="coerce",
     )
 
-    if df_clean["datetime"].isna().any():
-        logger.warning("Some datetime values could not be parsed")
+    df_clean["sender"] = df_clean["sender"].astype(str)
 
-    df_clean["sender"] = df_clean["sender"].astype(str).map(normalize_sender)
+    normalized_messages = []
+    emoji_lists = []
+    contains_flags = []
+
+    for msg in df_clean["original_message"]:
+        norm_text, found = normalize_emojis(msg)
+        normalized_messages.append(norm_text)
+        emoji_lists.append(found)
+        contains_flags.append(len(found) > 0)
+
+    df_clean["message"] = normalized_messages
+    df_clean["emoji_list"] = emoji_lists
+    df_clean["contains_emoji"] = contains_flags
 
     logger.info(f"Data cleaning completed ({len(df_clean)} messages)")
 

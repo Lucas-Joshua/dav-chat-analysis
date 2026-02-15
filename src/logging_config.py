@@ -1,5 +1,7 @@
 import logging
-from pathlib import Path
+from logging.handlers import RotatingFileHandler
+from datetime import datetime
+
 import colorlog
 from src import config
 
@@ -9,24 +11,17 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 def setup_logging(level: int = logging.INFO, log_to_file: bool = False) -> None:
-    """
-    Configure root logger with colored console output.
-    Optionally enable file logging to logs directory.
-    """
-
     root_logger = logging.getLogger()
 
-    # Prevent duplicate handlers if called multiple times
     if root_logger.handlers:
         root_logger.handlers.clear()
 
     root_logger.setLevel(level)
 
-    # ----------------------------
-    # Console handler (colored)
-    # ----------------------------
+    # ---------------------------
+    # Console handler
+    # ---------------------------
     console_handler = colorlog.StreamHandler()
-
     console_formatter = colorlog.ColoredFormatter(
         "%(log_color)s" + LOG_FORMAT,
         datefmt=DATE_FORMAT,
@@ -42,19 +37,22 @@ def setup_logging(level: int = logging.INFO, log_to_file: bool = False) -> None:
     console_handler.setFormatter(console_formatter)
     root_logger.addHandler(console_handler)
 
-    # ----------------------------
+    # ---------------------------
     # Optional file logging
-    # ----------------------------
+    # ---------------------------
     if log_to_file:
-        from datetime import datetime
+        log_file = config.LOGS_DIR / "pipeline.log"
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        log_file = config.LOGS_DIR / f"pipeline_{timestamp}.log"
+        file_handler = RotatingFileHandler(
+            log_file,
+            maxBytes=2_000_000,
+            backupCount=3,
+            encoding="utf-8",
+        )
 
-        file_handler = logging.FileHandler(log_file, encoding="utf-8")
         file_formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
-
         file_handler.setFormatter(file_formatter)
+
         root_logger.addHandler(file_handler)
 
     logging.captureWarnings(True)

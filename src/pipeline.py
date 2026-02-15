@@ -37,7 +37,9 @@ def prepare_and_run():
         df_final.to_csv(config.CLEAN_CHAT_CSV, index=False)
         df_final.to_parquet(config.CLEAN_CHAT_PARQUET, index=False)
 
-        visualization.create_visuals(df_final)
+        logger.info("Saving processed datasets")
+
+        visualization.create_visualizations(df_final)
 
         logger.info("Pipeline successfully completed")
 
