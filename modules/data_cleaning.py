@@ -1,55 +1,69 @@
-import logging
 import re
 import pandas as pd
+import logging
 
 logger = logging.getLogger(__name__)
 
-# Regex voor WhatsApp-berichten
 MESSAGE_PATTERN = re.compile(
     r"^\[(\d{2}-\d{2}-\d{4}), (\d{2}:\d{2}:\d{2})\] (.*?): (.*)$"
 )
 
+# Alles wat WhatsApp vaak injecteert aan "rare" whitespace / direction marks
+_INVISIBLE = [
+    "\u202f",  # narrow no-break space
+    "\u200e",  # left-to-right mark
+    "\u200f",  # right-to-left mark
+    "\ufeff",  # BOM
+]
+
+def normalize_sender(sender: str) -> str:
+    sender = "" if sender is None else str(sender)
+
+    # Verwijder leading "~" (WhatsApp systeem/rol prefix) en normaliseer spaties
+    sender = sender.replace("~", "")
+
+    # Verwijder onzichtbare unicode tekens
+    for ch in _INVISIBLE:
+        sender = sender.replace(ch, "")
+
+    # NBSP -> normale spatie, en whitespace normaliseren
+    sender = sender.replace("\xa0", " ")
+    sender = " ".join(sender.split())
+
+    return sender.strip()
 
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Schoont WhatsApp chat-export data op en structureert deze
-    naar datetime, sender en message.
-    """
     logger.info("Start opschonen van data")
 
     messages = []
-    current_message = None
+    current = None
 
     for line in df.iloc[:, 0]:
-        line = str(line).strip()
+        line = "" if line is None else str(line).rstrip("\n")
 
-        match = MESSAGE_PATTERN.match(line)
-        if match:
-            # nieuw bericht
-            if current_message:
-                messages.append(current_message)
+        m = MESSAGE_PATTERN.match(line.strip())
+        if m:
+            if current:
+                messages.append(current)
 
-            date, time, sender, message = match.groups()
-            current_message = {
+            date, time, sender, msg = m.groups()
+            current = {
                 "datetime": f"{date} {time}",
-                "sender": sender.replace("~", "").strip(),
-                "message": message.strip(),
+                "sender": normalize_sender(sender),
+                "message": msg.strip(),
             }
         else:
-            # multiline bericht → append
-            if current_message:
-                current_message["message"] += " " + line
+            if current and line.strip():
+                current["message"] += "\n" + line.strip()
 
-    # laatste bericht toevoegen
-    if current_message:
-        messages.append(current_message)
+    if current:
+        messages.append(current)
 
     df_clean = pd.DataFrame(messages)
+    df_clean["datetime"] = pd.to_datetime(df_clean["datetime"], format="%d-%m-%Y %H:%M:%S")
 
-    # datetime conversie
-    df_clean["datetime"] = pd.to_datetime(
-        df_clean["datetime"], format="%d-%m-%Y %H:%M:%S"
-    )
+    # Extra safety: normaliseer sender nogmaals (voor het geval)
+    df_clean["sender"] = df_clean["sender"].astype(str).map(normalize_sender)
 
     logger.info(f"Opschonen afgerond ({len(df_clean)} berichten)")
     return df_clean
