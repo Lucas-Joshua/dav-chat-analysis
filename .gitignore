@@ -1,1 +1,5 @@
-/data/raw_data.txt
+/data/raw/raw_data.txt
+/.idea/*
+/data/processed/*
+/uv.lock
+
