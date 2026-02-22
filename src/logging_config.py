@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 import logging
-from logging.handlers import RotatingFileHandler
 from datetime import datetime
+from pathlib import Path
 
 import colorlog
 from src import config
@@ -10,16 +12,19 @@ LOG_FORMAT = "%(asctime)s | %(levelname)s | %(name)s | %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
-def setup_logging(level: int = logging.INFO, log_to_file: bool = False) -> None:
+def setup_logging(level: int = logging.INFO) -> None:
+
     root_logger = logging.getLogger()
 
+    # Clear existing handlers (prevents duplicate logs)
     if root_logger.handlers:
         root_logger.handlers.clear()
 
     root_logger.setLevel(level)
+    root_logger.propagate = False
 
     # ---------------------------
-    # Console handler
+    # Console (colored)
     # ---------------------------
     console_handler = colorlog.StreamHandler()
     console_formatter = colorlog.ColoredFormatter(
@@ -38,21 +43,19 @@ def setup_logging(level: int = logging.INFO, log_to_file: bool = False) -> None:
     root_logger.addHandler(console_handler)
 
     # ---------------------------
-    # Optional file logging
+    # File logging (timestamped)
     # ---------------------------
-    if log_to_file:
-        log_file = config.LOGS_DIR / "pipeline.log"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = config.LOGS_DIR / f"pipeline_{timestamp}.log"
 
-        file_handler = RotatingFileHandler(
-            log_file,
-            maxBytes=2_000_000,
-            backupCount=3,
-            encoding="utf-8",
-        )
+    file_handler = logging.FileHandler(
+        log_file,
+        encoding="utf-8",
+    )
 
-        file_formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
-        file_handler.setFormatter(file_formatter)
+    file_formatter = logging.Formatter(LOG_FORMAT, datefmt=DATE_FORMAT)
+    file_handler.setFormatter(file_formatter)
 
-        root_logger.addHandler(file_handler)
+    root_logger.addHandler(file_handler)
 
     logging.captureWarnings(True)

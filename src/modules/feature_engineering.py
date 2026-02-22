@@ -1,145 +1,127 @@
+from __future__ import annotations
+
 import pandas as pd
-import logging
-import re
 import emoji
-from urllib.parse import urlparse
-
-logger = logging.getLogger(__name__)
 
 
-SWEAR_WORDS = [
-    "kut",
-    "fuck",
-    "shit",
-    "tering",
-    "klootzak",
-    "godver",
-]
+EMOJI_CATEGORY_MAP = {
+    "😄": "positive", "😁": "positive", "🙂": "positive",
+    "😊": "positive", "😃": "positive", "😍": "positive",
+    "🥰": "positive", "😇": "positive", "😌": "positive",
+    "🌟": "positive",
 
-SWEAR_PATTERN = re.compile(
-    r"\b(?:"
-    + "|".join(map(re.escape, SWEAR_WORDS))
-    + r")\b",
-    flags=re.IGNORECASE,
-)
+    "😂": "humor", "🤣": "humor", "😹": "humor",
+    "😆": "humor", "😜": "humor", "😝": "humor",
+    "🤪": "humor",
 
-URL_PATTERN = re.compile(
-    r"(https?://[^\s]+|www\.[^\s]+)",
-    flags=re.IGNORECASE,
-)
+    "😎": "cool", "🙃": "cool", "😏": "cool",
+    "😬": "cool", "🫠": "cool",
 
+    "🙏": "support", "👍": "support", "👏": "support",
+    "🙌": "support", "💪": "support", "🤝": "support",
 
-# --------------------------------------------------
-# Swearing
-# --------------------------------------------------
+    "🤔": "reflective", "😅": "reflective",
+    "😐": "reflective", "😶": "reflective",
+    "🧐": "reflective",
 
-def add_swearing_feature(df: pd.DataFrame) -> pd.DataFrame:
-    if "message" not in df.columns:
-        raise ValueError("Column 'message' not found in DataFrame")
+    "🎉": "celebration", "🥳": "celebration",
+    "🎊": "celebration",
 
-    df = df.copy()
+    "❤️": "affection", "💖": "affection",
+    "💙": "affection", "💛": "affection",
+    "💕": "affection", "😘": "affection",
 
-    df["contains_swear"] = (
-        df["message"]
-        .fillna("")
-        .str.contains(SWEAR_PATTERN)
-    )
-
-    return df
+    "😒": "negative", "😤": "negative",
+    "😩": "negative", "😢": "negative",
+    "😭": "negative", "😔": "negative",
+}
 
 
-# --------------------------------------------------
-# Links
-# --------------------------------------------------
+CATEGORY_REDUCTION_MAP = {
+    "positive": "positive",
+    "celebration": "positive",
+    "affection": "positive",
+    "support": "social",
+    "humor": "humor",
+    "cool": "humor",
+    "negative": "negative_reflective",
+    "reflective": "negative_reflective",
+}
 
-def extract_domains(text: str) -> str | None:
-    if not isinstance(text, str):
-        return None
-
-    urls = URL_PATTERN.findall(text)
-    if not urls:
-        return None
-
-    domains = []
-
-    for url in urls:
-        if not url.startswith(("http://", "https://")):
-            url = "https://" + url
-
-        try:
-            parsed = urlparse(url)
-            domain = parsed.netloc.lower().replace("www.", "")
-            root = domain.split(".")[0]
-
-            if root.startswith("youtu"):
-                root = "youtube"
-
-            domains.append(root.capitalize())
-
-        except ValueError:
-            logger.debug(f"Invalid URL skipped: {url}")
-            continue
-
-    return ", ".join(sorted(set(domains))) if domains else None
-
-
-def add_link_feature(df: pd.DataFrame) -> pd.DataFrame:
-    if "message" not in df.columns:
-        raise ValueError("Column 'message' not found in DataFrame")
-
-    df = df.copy()
-    df["link_source"] = df["message"].apply(extract_domains)
-
-    return df
-
-
-# --------------------------------------------------
-# Emojis
-# --------------------------------------------------
 
 def extract_emojis(text: str) -> list[str]:
     if not isinstance(text, str):
         return []
+    return [e["emoji"] for e in emoji.emoji_list(text)]
 
-    return [char for char in text if char in emoji.EMOJI_DATA]
 
-
-def add_emoji_feature(df: pd.DataFrame) -> pd.DataFrame:
-    if "message" not in df.columns:
-        raise ValueError("Column 'message' not found in DataFrame")
-
+def add_emoji_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
-    df["emoji_list"] = df["message"].apply(extract_emojis)
-    df["contains_emoji"] = df["emoji_list"].str.len() > 0
+    msg_col = "message" if "message" in df.columns else "original_message"
+    if msg_col not in df.columns:
+        raise KeyError("No message column found.")
+
+    df["emoji_list"] = df[msg_col].apply(extract_emojis)
+    df["emoji_count"] = df["emoji_list"].apply(len)
+    df["has_emoji"] = df["emoji_count"] > 0
 
     return df
 
 
-def get_top_emojis(df: pd.DataFrame, top_n: int = 10) -> pd.Series:
-    if "emoji_list" not in df.columns:
-        raise ValueError("Column 'emoji_list' not found in DataFrame")
+def add_emoji_category(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
 
-    return (
-        df["emoji_list"]
-        .explode()
-        .dropna()
-        .value_counts()
-        .head(top_n)
+    if "emoji_list" not in df.columns:
+        raise KeyError("emoji_list column not found.")
+
+    df = df.explode("emoji_list").dropna(subset=["emoji_list"])
+
+    df["emoji_type"] = df["emoji_list"].map(EMOJI_CATEGORY_MAP)
+    df["emoji_group"] = df["emoji_type"].map(CATEGORY_REDUCTION_MAP)
+    df = df.dropna(subset=["emoji_group"])
+
+    return df
+
+
+def _detect_user_col(df: pd.DataFrame, preferred: str | None = None) -> str:
+    if preferred and preferred in df.columns:
+        return preferred
+    if "user" in df.columns:
+        return "user"
+    if "sender" in df.columns:
+        return "sender"
+    raise KeyError("No user column found.")
+
+
+def get_top_emojis_per_user(
+    df: pd.DataFrame,
+    top_n: int = 5,
+    user_col: str | None = None
+) -> pd.DataFrame:
+
+    user_col = _detect_user_col(df, preferred=user_col)
+
+    if "emoji_list" not in df.columns:
+        raise KeyError("emoji_list column not found.")
+
+    exploded = df.explode("emoji_list").dropna(subset=["emoji_list"])
+    if exploded.empty:
+        return pd.DataFrame(columns=[user_col, "emoji_list", "count"])
+
+    counts = (
+        exploded
+        .groupby([user_col, "emoji_list"])
+        .size()
+        .reset_index(name="count")
     )
 
+    top_per_user = (
+        counts
+        .sort_values([user_col, "count"], ascending=[True, False])
+        .groupby(user_col)
+        .head(top_n)
+        .reset_index(drop=True)
+    )
 
-# --------------------------------------------------
-# Pipeline
-# --------------------------------------------------
-
-def apply_all_features(df: pd.DataFrame) -> pd.DataFrame:
-    logger.info("Starting feature engineering")
-
-    df = add_link_feature(df)
-    df = add_swearing_feature(df)
-    df = add_emoji_feature(df)
-
-    logger.info("Feature engineering completed")
-
-    return df
+    return top_per_user

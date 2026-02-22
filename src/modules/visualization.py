@@ -1,212 +1,203 @@
-import logging
+from __future__ import annotations
+
 from pathlib import Path
-from io import BytesIO
-
+from typing import Optional
 import pandas as pd
-import matplotlib.pyplot as plt
-import requests
-from PIL import Image
-from matplotlib.offsetbox import OffsetImage, AnnotationBbox
-
-from src import config
-
-logger = logging.getLogger(__name__)
-
-# --------------------------------------------------
-# Load emoji metadata (PNG source)
-# --------------------------------------------------
-
-EMOJI_FILE = Path("data/raw/emoji.csv")
-
-if EMOJI_FILE.exists():
-    EMOJI_DF = pd.read_csv(EMOJI_FILE)
-else:
-    EMOJI_DF = pd.DataFrame()
+import plotly.express as px
 
 
-# --------------------------------------------------
-# Helper: Add emoji image to plot (OS independent)
-# --------------------------------------------------
-
-def add_emoji_image(ax, x, y, url, zoom=0.06):
-    try:
-        response = requests.get(url, timeout=5)
-        img = Image.open(BytesIO(response.content))
-
-        imagebox = OffsetImage(img, zoom=zoom)
-        ab = AnnotationBbox(imagebox, (x, y), frameon=False)
-
-        ax.add_artist(ab)
-
-    except Exception:
-        pass
+def _ensure_parent_dir(out_path: str | Path) -> Path:
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    return out_path
 
 
-# --------------------------------------------------
-# Messages per user
-# --------------------------------------------------
-
-def plot_messages_per_user(df: pd.DataFrame):
-    counts = df["sender"].value_counts().head(15)
-
-    fig, ax = plt.subplots(figsize=config.FIGURE_SIZE)
-    counts.plot(kind="bar", ax=ax)
-
-    ax.set_title("Messages per User")
-    ax.set_ylabel("Messages")
-    plt.xticks(rotation=45, ha="right")
-
-    plt.tight_layout()
-
-    output = config.IMG_DIR / "messages_per_user.png"
-    plt.savefig(output, dpi=config.DPI)
-    plt.close()
-
-    logger.info(f"Saved: {output}")
+def _get_user_col(df: pd.DataFrame, preferred: Optional[str] = None) -> str:
+    if preferred and preferred in df.columns:
+        return preferred
+    if "user" in df.columns:
+        return "user"
+    if "sender" in df.columns:
+        return "sender"
+    raise KeyError("No user column found.")
 
 
-# --------------------------------------------------
-# Messages per day
-# --------------------------------------------------
+def plot_top_emojis_per_user_png(
+    df_top_user: pd.DataFrame,
+    out_path: str | Path = "img/top_emojis_per_user.png",
+    top_users: int = 10,
+):
 
-def plot_messages_per_day(df: pd.DataFrame):
-    daily = df.groupby(df["datetime"].dt.date).size()
+    out_path = _ensure_parent_dir(out_path)
+    user_col = _get_user_col(df_top_user)
 
-    fig, ax = plt.subplots(figsize=config.FIGURE_SIZE)
-    daily.plot(ax=ax)
+    top_user_order = (
+        df_top_user.groupby(user_col)["count"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(top_users)
+        .index
+        .tolist()
+    )
 
-    ax.set_title("Messages per Day")
-    ax.set_ylabel("Messages")
+    df_plot = df_top_user[df_top_user[user_col].isin(top_user_order)].copy()
 
-    plt.tight_layout()
+    df_plot[user_col] = pd.Categorical(
+        df_plot[user_col],
+        categories=top_user_order,
+        ordered=True
+    )
 
-    output = config.IMG_DIR / "messages_per_day.png"
-    plt.savefig(output, dpi=config.DPI)
-    plt.close()
+    fig = px.bar(
+        df_plot,
+        x=user_col,
+        y="count",
+        color="emoji_list",
+        barmode="stack",
+        title=f"Top Emoji Usage per Top {top_users} Users"
+    )
 
-    logger.info(f"Saved: {output}")
+    fig.update_layout(
+        xaxis_title="User",
+        yaxis_title="Emoji count",
+        legend_title="Emoji",
+        font=dict(size=14),
+    )
 
-
-# --------------------------------------------------
-# URL types
-# --------------------------------------------------
-
-def plot_url_types(df: pd.DataFrame):
-    if "link_source" not in df.columns:
-        return
-
-    counts = df["link_source"].value_counts()
-
-    fig, ax = plt.subplots(figsize=config.FIGURE_SIZE)
-    counts.plot(kind="bar", ax=ax)
-
-    ax.set_title("Different URL Types")
-    ax.set_ylabel("Count")
-
-    plt.tight_layout()
-
-    output = config.IMG_DIR / "different_type_urls.png"
-    plt.savefig(output, dpi=config.DPI)
-    plt.close()
-
-    logger.info(f"Saved: {output}")
+    fig.write_image(out_path, scale=2)
 
 
-# --------------------------------------------------
-# Emoji usage per user
-# --------------------------------------------------
+def plot_emoji_heatmap_png(
+    df: pd.DataFrame,
+    out_path: str | Path = "img/emoji_heatmap.png",
+    top_n_emojis: int = 10,
+    user_col: Optional[str] = None,
+):
 
-def plot_emoji_usage_per_user(df: pd.DataFrame):
-    if "contains_emoji" not in df.columns:
-        return
+    out_path = _ensure_parent_dir(out_path)
+    user_col = _get_user_col(df, preferred=user_col)
 
-    usage = df[df["contains_emoji"]].groupby("sender").size().sort_values(ascending=False).head(15)
-
-    fig, ax = plt.subplots(figsize=config.FIGURE_SIZE)
-    usage.plot(kind="bar", ax=ax)
-
-    ax.set_title("Emoji Usage per User")
-    ax.set_ylabel("Emoji Messages")
-
-    plt.xticks(rotation=45, ha="right")
-    plt.tight_layout()
-
-    output = config.IMG_DIR / "emoji_usage_per_user.png"
-    plt.savefig(output, dpi=config.DPI)
-    plt.close()
-
-    logger.info(f"Saved: {output}")
-
-
-# --------------------------------------------------
-# Top emojis (OS-independent PNG method)
-# --------------------------------------------------
-def plot_top_emojis(df: pd.DataFrame, top_n: int = 10):
     if "emoji_list" not in df.columns:
-        return
+        raise KeyError("emoji_list column not found.")
 
-    all_emojis = []
+    exploded = df.explode("emoji_list").dropna(subset=["emoji_list"])
 
-    for emojis in df["emoji_list"]:
-        if isinstance(emojis, list):
-            all_emojis.extend(emojis)
+    if exploded.empty:
+        raise ValueError("No emojis available for heatmap.")
 
-    if not all_emojis:
-        return
+    top_emojis = (
+        exploded["emoji_list"]
+        .value_counts()
+        .head(top_n_emojis)
+        .index
+        .tolist()
+    )
 
-    emoji_counts = pd.Series(all_emojis).value_counts().head(top_n)
+    filtered = exploded[exploded["emoji_list"].isin(top_emojis)]
 
-    fig, ax = plt.subplots(figsize=config.FIGURE_SIZE)
+    heatmap_data = (
+        filtered.groupby([user_col, "emoji_list"])
+        .size()
+        .unstack(fill_value=0)
+    )
 
-    counts = emoji_counts.values
-    names = emoji_counts.index.tolist()
+    heatmap_data = heatmap_data.loc[
+        heatmap_data.sum(axis=1).sort_values(ascending=False).index,
+        heatmap_data.sum(axis=0).sort_values(ascending=False).index,
+    ]
 
-    y_positions = list(range(len(counts)))
+    fig = px.imshow(
+        heatmap_data,
+        text_auto=True,
+        aspect="auto",
+        color_continuous_scale="Blues",
+        title=f"Emoji Usage Heatmap (Top {top_n_emojis})",
+    )
 
-    ax.barh(y_positions, counts, color="#2E6F9E")
+    fig.update_layout(
+        xaxis_title="Emoji",
+        yaxis_title="User",
+        font=dict(size=14),
+    )
 
-    # 👇 Zorg voor ruimte links
-    max_count = max(counts)
-    ax.set_xlim(-max_count * 0.25, max_count * 1.05)
+    fig.write_image(out_path, scale=2)
 
-    ax.set_yticks(y_positions)
-    ax.set_yticklabels([""] * len(y_positions))
 
-    # 👇 Emoji images toevoegen
-    for i, (name, count) in enumerate(zip(names, counts)):
-        row = EMOJI_DF[EMOJI_DF["name"].str.lower() == name.lower()]
+def plot_emoji_type_per_user(
+    df: pd.DataFrame,
+    out_path: str | Path = "img/emoji_group_distribution.png",
+    top_users: int = 10,
+):
 
-        if not row.empty:
-            url = row.iloc[0]["url"]
+    out_path = _ensure_parent_dir(out_path)
+    user_col = _get_user_col(df)
 
-            # Plaats afbeelding duidelijk links van bar
-            add_emoji_image(ax, -max_count * 0.15, i, url)
+    if "emoji_group" not in df.columns:
+        raise KeyError("emoji_group column not found.")
 
-    ax.set_xlabel("Frequency")
-    ax.set_title("Top Emojis")
-    ax.invert_yaxis()
+    df = df[df["emoji_group"] != "other"].copy()
 
-    plt.tight_layout()
+    counts = (
+        df.groupby([user_col, "emoji_group"])
+        .size()
+        .reset_index(name="count")
+    )
 
-    output = config.IMG_DIR / "top_emojis.png"
-    plt.savefig(output, dpi=config.DPI)
-    plt.close()
+    top_user_order = (
+        counts.groupby(user_col)["count"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(top_users)
+        .index
+        .tolist()
+    )
 
-    print(names)
-    print(EMOJI_DF["name"].head())
+    counts = counts[counts[user_col].isin(top_user_order)]
 
-    logger.info(f"Saved: {output}")
-# --------------------------------------------------
-# Main entry
-# --------------------------------------------------
+    counts["count"] = (
+        counts.groupby(user_col)["count"]
+        .transform(lambda x: x / x.sum())
+    )
 
-def create_visualizations(df: pd.DataFrame):
-    logger.info("Start creating visualizations")
+    dominant = (
+        counts.sort_values("count", ascending=False)
+        .groupby(user_col)
+        .first()
+    )
 
-    plot_messages_per_user(df)
-    plot_messages_per_day(df)
-    plot_url_types(df)
-    plot_emoji_usage_per_user(df)
-    plot_top_emojis(df)
+    order = dominant.sort_values("emoji_group").index.tolist()
 
-    logger.info("Visualizations completed")
+    counts[user_col] = pd.Categorical(
+        counts[user_col],
+        categories=order,
+        ordered=True
+    )
+
+    color_map = {
+        "humor": "#F4B400",
+        "positive": "#34A853",
+        "social": "#4285F4",
+        "negative_reflective": "#DB4437"
+    }
+
+    fig = px.bar(
+        counts,
+        y=user_col,
+        x="count",
+        color="emoji_group",
+        orientation="h",
+        barmode="stack",
+        color_discrete_map=color_map,
+        title="Comparing Communicative Styles Across Top 10 Users",
+    )
+
+    fig.update_layout(
+        xaxis_title="Percentage of Emoji Usage",
+        yaxis_title="User",
+        legend_title="Communicative Style",
+        font=dict(size=14),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
+    )
+
+    fig.write_image(out_path, scale=2)
