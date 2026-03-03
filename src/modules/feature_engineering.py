@@ -54,7 +54,6 @@ def extract_emojis(text: str) -> list[str]:
         return []
     return [e["emoji"] for e in emoji.emoji_list(text)]
 
-
 def add_emoji_features(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
 
@@ -67,7 +66,6 @@ def add_emoji_features(df: pd.DataFrame) -> pd.DataFrame:
     df["has_emoji"] = df["emoji_count"] > 0
 
     return df
-
 
 def add_emoji_category(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
@@ -83,7 +81,6 @@ def add_emoji_category(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
-
 def _detect_user_col(df: pd.DataFrame, preferred: str | None = None) -> str:
     if preferred and preferred in df.columns:
         return preferred
@@ -92,7 +89,6 @@ def _detect_user_col(df: pd.DataFrame, preferred: str | None = None) -> str:
     if "sender" in df.columns:
         return "sender"
     raise KeyError("No user column found.")
-
 
 def get_top_emojis_per_user(
     df: pd.DataFrame,
@@ -125,3 +121,17 @@ def get_top_emojis_per_user(
     )
 
     return top_per_user
+
+def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+
+    if "datetime" not in df.columns:
+        raise KeyError("datetime column not found.")
+
+    df["datetime"] = pd.to_datetime(df["datetime"])
+
+    df["hour"] = df["datetime"].dt.hour
+    df["day_of_week"] = df["datetime"].dt.day_name()
+    df["date_only"] = df["datetime"].dt.date
+
+    return df

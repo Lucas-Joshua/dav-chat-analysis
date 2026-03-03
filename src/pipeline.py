@@ -5,97 +5,123 @@ from pathlib import Path
 
 from src import config
 from src.logging_config import setup_logging
-
-from src.modules.data_loader import load_raw_chat
-from src.modules.data_cleaning import clean_data
-from src.modules.anonymizer import apply_anonymization
+from src.modules import data_loader, data_cleaning
 from src.modules.feature_engineering import (
     add_emoji_features,
     add_emoji_category,
-    get_top_emojis_per_user,
+    add_time_features,
 )
 from src.modules.visualization import (
-    plot_top_emojis_per_user_png,
-    plot_emoji_heatmap_png,
-    plot_emoji_type_per_user,
+    plot_overall_emoji_distribution,
+    plot_negative_reaction_concentration,
+    plot_negative_reaction_scatter,
+    plot_chat_activity_by_hour,
 )
 
+# ==================================================
+# VISUALIZATION TOGGLES
+# ==================================================
+GENERATE_OVERALL_DISTRIBUTION: bool = True
+GENERATE_NEGATIVE_CONCENTRATION: bool = True
+GENERATE_NEGATIVE_SCATTER: bool = True
+GENERATE_HOURLY_ACTIVITY: bool = False
+# ==================================================
 
-logger = logging.getLogger(__name__)
 
+def run_pipeline(raw_path: str | Path) -> None:
+    """
+    Main pipeline execution.
 
-def run_pipeline(raw_path: str | Path | None = None) -> None:
-    setup_logging()
-    logger.info("Pipeline started")
+    Steps:
+    1. Load raw chat data
+    2. Clean dataset
+    3. Add engineered features
+    4. Save processed dataset
+    5. Generate selected visualizations
+    """
 
-    if raw_path is None:
-        raw_path = config.RAW_DATA_FILE
+    # -------------------------
+    # Setup logging
+    # -------------------------
+    setup_logging(log_to_file=True)
+    logger = logging.getLogger(__name__)
+
+    logger.info("========== PIPELINE STARTED ==========")
 
     raw_path = Path(raw_path)
 
     if not raw_path.exists():
-        logger.error(f"Raw data file not found: {raw_path}")
-        raise FileNotFoundError(f"Raw data file not found: {raw_path}")
+        logger.error(f"Raw file not found: {raw_path}")
+        raise FileNotFoundError(f"Raw file not found: {raw_path}")
 
-    logger.info(f"Using raw data file: {raw_path}")
+    # Ensure output directories exist
+    config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    config.IMG_DIR.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Loading raw chat data")
-    df_raw = load_raw_chat(raw_path)
+    # -------------------------
+    # Load
+    # -------------------------
+    logger.info("Loading raw chat data...")
+    df_raw = data_loader.load_raw_chat(raw_path)
 
-    logger.info(f"Loaded {len(df_raw)} rows")
+    # -------------------------
+    # Clean
+    # -------------------------
+    logger.info("Cleaning data...")
+    df = data_cleaning.clean_data(df_raw)
 
-    logger.info("Cleaning data")
-    df = clean_data(df_raw)
-
-    logger.info(f"Rows after cleaning: {len(df)}")
-
-    logger.info("Applying anonymization")
-    df = apply_anonymization(df)
-
-
-    logger.info("Extracting emoji features")
+    # -------------------------
+    # Feature engineering
+    # -------------------------
+    logger.info("Adding emoji features...")
     df = add_emoji_features(df)
 
-    logger.info("Adding emoji categories")
+    logger.info("Adding emoji categories...")
     df = add_emoji_category(df)
 
-    logger.info("Saving processed data")
+    logger.info("Adding time features...")
+    df = add_time_features(df)
 
-    config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Dataset shape after processing: {df.shape}")
 
-    parquet_path = config.PROCESSED_DIR / "clean_chat_anonymized.parquet"
-    csv_path = config.PROCESSED_DIR / "clean_chat_anonymized.csv"
+    # -------------------------
+    # Save processed dataset
+    # -------------------------
+    processed_path = config.PROCESSED_DIR / "clean_chat_processed.parquet"
+    logger.info(f"Saving processed dataset to: {processed_path}")
+    df.to_parquet(processed_path, index=False)
 
-    df.to_parquet(parquet_path, index=False)
-    df.to_csv(csv_path, index=False)
+    # -------------------------
+    # Visualizations
+    # -------------------------
+    logger.info("Generating selected visualizations...")
 
-    logger.info(f"Saved parquet: {parquet_path}")
-    logger.info(f"Saved csv: {csv_path}")
+    if GENERATE_OVERALL_DISTRIBUTION:
+        logger.info("→ Overall emoji distribution")
+        plot_overall_emoji_distribution(
+            df,
+            out_path=config.IMG_DIR / "overall_emoji_distribution.png",
+        )
 
-    logger.info("Generating visualizations")
+    if GENERATE_NEGATIVE_CONCENTRATION:
+        logger.info("→ Negative reaction concentration")
+        plot_negative_reaction_concentration(
+            df,
+            out_path=config.IMG_DIR / "negative_reaction_concentration.png",
+        )
 
-    # Top emojis per user
-    top_user = get_top_emojis_per_user(df, top_n=5)
-    plot_top_emojis_per_user_png(
-        top_user,
-        out_path=config.IMG_DIR / "top_emojis_per_user.png",
-    )
-    logger.info("Saved: top_emojis_per_user.png")
+    if GENERATE_NEGATIVE_SCATTER:
+        logger.info("→ Negative reaction scatter diagnostic")
+        plot_negative_reaction_scatter(
+            df,
+            out_path=config.IMG_DIR / "negative_reaction_scatter.png",
+        )
 
-    # Emoji heatmap
-    plot_emoji_heatmap_png(
-        df,
-        out_path=config.IMG_DIR / "emoji_heatmap.png",
-        top_n_emojis=10,
-    )
-    logger.info("Saved: emoji_heatmap.png")
+    if GENERATE_HOURLY_ACTIVITY:
+        logger.info("→ Hourly activity plot")
+        plot_chat_activity_by_hour(
+            df,
+            out_path=config.IMG_DIR / "chat_activity_by_hour.png",
+        )
 
-    # Emoji group distribution
-    plot_emoji_type_per_user(
-        df,
-        out_path=config.IMG_DIR / "emoji_type_per_user.png",
-        top_users=10,
-    )
-    logger.info("Saved: emoji_type_per_user.png")
-
-    logger.info("Pipeline finished successfully")
+    logger.info("========== PIPELINE FINISHED SUCCESSFULLY ==========")
