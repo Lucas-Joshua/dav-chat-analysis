@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 import emoji
+import re
 
 
 EMOJI_CATEGORY_MAP = {
@@ -133,5 +134,41 @@ def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
     df["hour"] = df["datetime"].dt.hour
     df["day_of_week"] = df["datetime"].dt.day_name()
     df["date_only"] = df["datetime"].dt.date
+
+    return df
+
+def add_message_length(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add message length feature based on message text.
+    """
+
+    df = df.copy()
+
+    df["message_length"] = df["message"].str.len()
+
+    return df
+
+def add_has_emoji_feature(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add feature indicating whether a message contains at least one emoji.
+    """
+
+    df = df.copy()
+
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"
+        "\U0001F300-\U0001F5FF"
+        "\U0001F680-\U0001F6FF"
+        "\U0001F1E0-\U0001F1FF"
+        "\U00002700-\U000027BF"
+        "\U000024C2-\U0001F251"
+        "]",
+        flags=re.UNICODE,
+    )
+
+    df["has_emoji"] = df["message"].astype(str).apply(
+        lambda x: bool(emoji_pattern.search(x))
+    )
 
     return df

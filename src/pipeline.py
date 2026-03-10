@@ -10,21 +10,28 @@ from src.modules.feature_engineering import (
     add_emoji_features,
     add_emoji_category,
     add_time_features,
+    add_message_length,
+    add_has_emoji_feature
 )
 from src.modules.visualization import (
     plot_overall_emoji_distribution,
     plot_negative_reaction_concentration,
     plot_negative_reaction_scatter,
     plot_chat_activity_by_hour,
+    plot_chat_activity_distribution,
+    plot_emoji_usage_by_hour
 )
 
 # ==================================================
 # VISUALIZATION TOGGLES
 # ==================================================
-GENERATE_OVERALL_DISTRIBUTION: bool = True
-GENERATE_NEGATIVE_CONCENTRATION: bool = True
-GENERATE_NEGATIVE_SCATTER: bool = True
+GENERATE_OVERALL_DISTRIBUTION: bool = False
+GENERATE_NEGATIVE_CONCENTRATION: bool = False
+GENERATE_NEGATIVE_SCATTER: bool = False
 GENERATE_HOURLY_ACTIVITY: bool = False
+GENERATE_MESSAGE_LENGTH_DISTRIBUTION: bool = False
+GENERATE_EMOJI_USAGE_BY_HOUR: bool = True
+
 # ==================================================
 
 
@@ -82,6 +89,12 @@ def run_pipeline(raw_path: str | Path) -> None:
     logger.info("Adding time features...")
     df = add_time_features(df)
 
+    logger.info("Adding message length feature...")
+    df = add_message_length(df)
+
+    logger.info("Adding has emoji feature...")
+    df = add_has_emoji_feature(df)
+
     logger.info(f"Dataset shape after processing: {df.shape}")
 
     # -------------------------
@@ -123,5 +136,22 @@ def run_pipeline(raw_path: str | Path) -> None:
             df,
             out_path=config.IMG_DIR / "chat_activity_by_hour.png",
         )
+
+    if GENERATE_MESSAGE_LENGTH_DISTRIBUTION:
+        logger.info("→ Message length distribution plot")
+
+        plot_chat_activity_distribution(
+            df,
+            config.IMG_DIR / "plot_chat_activity_distribution.png",
+        )
+
+    if GENERATE_EMOJI_USAGE_BY_HOUR:
+        logger.info("→ Emoji usage by hour plot")
+
+        plot_emoji_usage_by_hour(
+            df,
+            config.IMG_DIR / "plot_emoji_usage_by_hour.png",
+        )
+
 
     logger.info("========== PIPELINE FINISHED SUCCESSFULLY ==========")

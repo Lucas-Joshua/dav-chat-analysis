@@ -4,13 +4,12 @@ from pathlib import Path
 from typing import Optional
 import pandas as pd
 import plotly.express as px
-
+import plotly.graph_objects as go
 
 def _ensure_parent_dir(out_path: str | Path) -> Path:
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     return out_path
-
 
 def _get_user_col(df: pd.DataFrame, preferred: Optional[str] = None) -> str:
     if preferred and preferred in df.columns:
@@ -147,10 +146,6 @@ def plot_negative_reaction_diagnostic(
     - Red bars: proportion of negative-reaction emojis
     - Black dots: total emoji usage per user
     """
-
-    from pathlib import Path
-    import pandas as pd
-    import plotly.graph_objects as go
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -594,3 +589,114 @@ def plot_chat_activity_by_hour(
     )
 
     fig.write_image(out_path, scale=2)
+
+
+def plot_chat_activity_distribution(
+    df: pd.DataFrame,
+    output: Optional[Path] = None
+) -> go.Figure:
+    """
+    Visualizes the distribution of chat messages across hours of the day.
+
+    Insight:
+    Most chat activity happens during operational hours of the dropzone.
+    """
+
+    df = df.copy()
+
+    hourly_counts = (
+        df.groupby("hour")
+        .size()
+        .reset_index(name="messages")
+        .sort_values("hour")
+    )
+
+    fig = px.bar(
+        hourly_counts,
+        x="hour",
+        y="messages",
+        color_discrete_sequence=["#CFCFCF"],
+        labels={
+            "hour": "Hour of Day",
+            "messages": "Number of Messages"
+        },
+    )
+
+    fig.update_layout(
+        template="simple_white",
+        bargap=0.35,
+        showlegend=False,
+        title={
+            "text": (
+                "Most Chat Activity Happens During Operational Hours of the Dropzone"
+                "<br><sup>Distribution of chat messages across hours of the day "
+                "(Oct 2024 – Feb 2026)</sup>"
+            ),
+            "x": 0.5
+        }
+    )
+
+    fig.update_xaxes(dtick=3)
+
+    # mark peak hour
+    peak_row = hourly_counts.loc[hourly_counts["messages"].idxmax()]
+
+    if output:
+        fig.write_image(output)
+
+    return fig
+
+
+def plot_emoji_usage_by_hour(
+    df: pd.DataFrame,
+    output: Optional[Path] = None
+) -> go.Figure:
+    """
+    Visualizes the probability that a message contains emojis across hours of the day.
+
+    Insight:
+    Emoji usage increases during social hours after skydiving activities.
+    """
+
+    df = df.copy()
+
+    hourly_emoji = (
+        df.groupby("hour")["has_emoji"]
+        .mean()
+        .reset_index(name="emoji_probability")
+        .sort_values("hour")
+    )
+
+    fig = px.bar(
+        hourly_emoji,
+        x="hour",
+        y="emoji_probability",
+        color_discrete_sequence=["#CFCFCF"],
+        labels={
+            "hour": "Hour of Day",
+            "emoji_probability": "Probability of Emoji in Message"
+        },
+    )
+
+    fig.update_layout(
+        template="simple_white",
+        bargap=0.35,
+        showlegend=False,
+        title={
+            "text": (
+                "Emoji Usage Increases During Social Hours After Jumping Activities"
+                "<br><sup>Probability that a message contains emojis by hour of day "
+                "(Oct 2024 – Feb 2026)</sup>"
+            ),
+            "x": 0.5
+        }
+    )
+
+    fig.update_xaxes(dtick=3)
+    fig.update_yaxes(range=[0, 1])
+
+    if output:
+        fig.write_image(output)
+
+    return fig
+
