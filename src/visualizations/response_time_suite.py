@@ -1,3 +1,5 @@
+"""Response-time visualization suite generation and registry entry."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -34,16 +36,23 @@ def _compute_response_minutes(df: pd.DataFrame) -> pd.DataFrame:
 
     df["response_minutes"] = df["response_time"] / 60.0
 
+    datetime_series = pd.to_datetime(df["datetime"], errors="coerce")
     if "hour" not in df.columns:
-        df["hour"] = df["datetime"].dt.hour
+        df["hour"] = datetime_series.map(
+            lambda value: int(value.hour) if pd.notna(value) else None
+        )
     if "day_of_week" not in df.columns:
-        df["day_of_week"] = df["datetime"].dt.day_name()
+        df["day_of_week"] = datetime_series.map(
+            lambda value: value.strftime("%A") if pd.notna(value) else None
+        )
     if "message_length" not in df.columns:
         msg_col = "message" if "message" in df.columns else "original_message"
         if msg_col in df.columns:
             df["message_length"] = df[msg_col].astype(str).str.len()
     if "date_only" not in df.columns:
-        df["date_only"] = df["datetime"].dt.date
+        df["date_only"] = datetime_series.map(
+            lambda value: value.date() if pd.notna(value) else None
+        )
 
     return df
 

@@ -1,3 +1,5 @@
+"""Utilities for generating and applying pseudonymous user mappings."""
+
 import pandas as pd
 import logging
 from random import Random
@@ -60,10 +62,7 @@ def create_mapping(users: list[str]) -> pd.DataFrame:
 
 
 def apply_anonymization(df: pd.DataFrame) -> pd.DataFrame:
-    """Replace user identifiers with anonymized names."""
-    """
-    Replace real sender names with pseudonyms.
-    """
+    """Replace real sender names with pseudonyms."""
 
     if "sender" not in df.columns:
         raise ValueError("Column 'sender' not found")

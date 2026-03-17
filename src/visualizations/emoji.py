@@ -1,3 +1,5 @@
+"""Public emoji visualization wrappers and registry entries."""
+
 from __future__ import annotations
 
 from pathlib import Path

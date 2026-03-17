@@ -1,3 +1,5 @@
+"""Low-level plot constructors for incident timeline visualizations."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -9,6 +11,29 @@ import pandas as pd
 import re
 
 from src.modules.feature_engineering import INCIDENT_BOW_TERMS
+
+
+def _build_incident_pattern() -> str:
+    """Build a regex pattern that matches incident bag-of-words terms."""
+    terms: list[str] = [str(term) for term in INCIDENT_BOW_TERMS]
+    escaped_terms: list[str] = [
+        re.escape(str(term)).replace(r"\ ", r"\s+") for term in terms
+    ]
+    return r"\b(?:{})\b".format("|".join(escaped_terms))
+
+
+def _flag_incident_messages(df: pd.DataFrame) -> pd.DataFrame:
+    """Add incident message flags to a dataframe copy."""
+    pattern = _build_incident_pattern()
+    working = df.copy()
+    working["is_incident_message"] = (
+        working["message"]
+        .fillna("")
+        .astype(str)
+        .str.contains(pattern, case=False, regex=True, na=False)
+        .astype(int)
+    )
+    return working
 
 
 def _prepare_weekly_incident_df(df: pd.DataFrame) -> pd.DataFrame:
@@ -23,20 +48,13 @@ def _prepare_weekly_incident_df(df: pd.DataFrame) -> pd.DataFrame:
     working = working.dropna(subset=["datetime"])
 
     if "date_only" not in working.columns:
-        working["date_only"] = working["datetime"].dt.floor("D")
+        working["date_only"] = working["datetime"].map(
+            lambda value: value.date() if pd.notna(value) else None
+        )
     else:
         working["date_only"] = pd.to_datetime(working["date_only"], errors="coerce")
 
-    bow_pattern = r"\b(?:{})\b".format(
-        "|".join(re.escape(t).replace(r"\ ", r"\s+") for t in INCIDENT_BOW_TERMS)
-    )
-    working["is_incident_message"] = (
-        working["message"]
-        .fillna("")
-        .astype(str)
-        .str.contains(bow_pattern, case=False, regex=True, na=False)
-        .astype(int)
-    )
+    working = _flag_incident_messages(working)
 
     daily = (
         working.groupby("date_only")
@@ -67,7 +85,7 @@ def plot_incident_discussion_timeline(
 ) -> None:
     """Plot weekly total vs incident message volume with BOW keyword context."""
     focus = _prepare_weekly_incident_df(df)
-    if focus.empty:
+    if bool(focus.empty):
         return
 
     fig, ax = plt.subplots(figsize=(13, 5))
@@ -85,7 +103,7 @@ def plot_incident_discussion_timeline(
         label="Total messages / week",
     )
     incident_week_mask = focus["incident_message_count"] > 0
-    if incident_week_mask.any():
+    if bool(incident_week_mask.any()):
         ax.bar(
             focus.index[incident_week_mask],
             focus.loc[incident_week_mask, "total_message_count"],
@@ -138,36 +156,31 @@ def plot_incident_discussion_timeline(
     ax.legend(handles, labels, frameon=False, loc="upper left", fontsize=9)
 
     # Show top flagged words as a vertical list on the right side.
-    working = df.copy()
-    bow_pattern = r"\b(?:{})\b".format(
-        "|".join(re.escape(t).replace(r"\ ", r"\s+") for t in INCIDENT_BOW_TERMS)
-    )
-    working["is_incident_message"] = (
-        working["message"]
+    working = _flag_incident_messages(df)
+    incident_msgs = (
+        working.loc[working["is_incident_message"] == 1, "message"]
         .fillna("")
         .astype(str)
-        .str.contains(bow_pattern, case=False, regex=True, na=False)
-        .astype(int)
+        .tolist()
     )
-    incident_msgs = working.loc[working["is_incident_message"] == 1, "message"].fillna("").astype(str)
-    term_patterns = [
+    term_patterns: list[tuple[str, re.Pattern[str]]] = [
         (
             term,
             re.compile(
-                r"\b" + re.escape(term).replace(r"\ ", r"\s+") + r"\b",
+                r"\b" + re.escape(str(term)).replace(r"\ ", r"\s+") + r"\b",
                 flags=re.IGNORECASE,
             ),
         )
-        for term in sorted(INCIDENT_BOW_TERMS, key=len, reverse=True)
+        for term in sorted(INCIDENT_BOW_TERMS, key=lambda item: len(str(item)), reverse=True)
     ]
     term_counts: dict[str, int] = {}
     for msg in incident_msgs:
         for term, pattern in term_patterns:
-            if pattern.search(msg):
+            if pattern.search(str(msg)):
                 term_counts[term] = term_counts.get(term, 0) + 1
                 break
     if term_counts:
-        top_items = sorted(term_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+        top_items = sorted(term_counts.items(), key=lambda item: item[1], reverse=True)[:5]
         top_terms_text = "\n".join(f"{term}: {count}" for term, count in top_items)
         ax.text(
             0.99,
@@ -182,13 +195,14 @@ def plot_incident_discussion_timeline(
         )
 
     if len(focus.index) > 0:
-        start = focus.index.min()
-        end = focus.index.max()
-        if start == end:
-            ticks = [start]
-        else:
-            ticks = pd.date_range(start=start, end=end, periods=9)
-        ax.set_xticks(ticks)
+        start = pd.to_datetime(focus.index.min(), errors="coerce")
+        end = pd.to_datetime(focus.index.max(), errors="coerce")
+        if bool(pd.notna(start)) and bool(pd.notna(end)):
+            if bool(start == end):
+                tick_dates = [start]
+            else:
+                tick_dates = list(pd.date_range(start=start, end=end, periods=9))
+            ax.set_xticks(mdates.date2num(tick_dates))
     ax.xaxis.set_major_formatter(mdates.DateFormatter("%d-%m-%Y"))
     plt.setp(ax.get_xticklabels(), rotation=0, ha="center")
     fig.subplots_adjust(bottom=0.10)
@@ -205,7 +219,7 @@ def plot_incident_activity_correlation(
 ) -> None:
     """Plot correlation between weekly total chat activity and incident message count."""
     weekly = _prepare_weekly_incident_df(df)
-    if weekly.empty:
+    if bool(weekly.empty):
         return
 
     corr = weekly["total_message_count"].corr(weekly["incident_message_count"])
@@ -223,11 +237,11 @@ def plot_incident_activity_correlation(
         linewidths=0.4,
     )
     info_text = f"n = {n_points}\ncorr = {corr:.2f}"
-    x = weekly["total_message_count"].astype(float).to_numpy()
-    y = weekly["incident_message_count"].astype(float).to_numpy()
-    if len(x) >= 2 and (x.max() - x.min()) > 0:
-        slope, intercept = np.polyfit(x, y, 1)
-        x_line = pd.Series([x.min(), x.max()])
+    x_values = weekly["total_message_count"].astype(float).to_numpy()
+    y_values = weekly["incident_message_count"].astype(float).to_numpy()
+    if len(x_values) >= 2 and (x_values.max() - x_values.min()) > 0:
+        slope, intercept = np.polyfit(x_values, y_values, 1)
+        x_line = pd.Series([x_values.min(), x_values.max()])
         y_line = slope * x_line + intercept
         ax.plot(
             x_line,

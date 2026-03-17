@@ -1,3 +1,5 @@
+"""Registry loader and dispatcher for visualization entry points."""
+
 from __future__ import annotations
 
 import importlib
@@ -47,5 +49,5 @@ def run_selected(
             logger.info("Visualization: %s", name)
             try:
                 registry[name](df, out_dir=out_dir)
-            except Exception:
+            except (KeyError, ValueError, RuntimeError, OSError):
                 logger.exception("Visualization failed: %s", name)

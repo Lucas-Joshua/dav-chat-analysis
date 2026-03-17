@@ -1,3 +1,5 @@
+"""I/O helpers for loading raw and cleaned chat datasets."""
+
 import logging
 from pathlib import Path
 
@@ -9,7 +11,8 @@ logger = logging.getLogger(__name__)
 
 def load_raw_chat(path: Path, encoding: str | None = None) -> pd.DataFrame:
     """
-    Loads raw WhatsApp export lines into a dataframe with one column: 'raw'.
+    Load raw WhatsApp export lines into a dataframe with one column: ``raw``.
+
     Keeps it simple on purpose; parsing happens in data_cleaning.clean_data().
     """
     if encoding is None:

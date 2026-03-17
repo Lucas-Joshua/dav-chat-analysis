@@ -1,3 +1,5 @@
+"""Visualization package exports."""
+
 from __future__ import annotations
 
 from src.visualizations.registry import run_selected

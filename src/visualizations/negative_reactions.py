@@ -1,3 +1,5 @@
+"""Public negative-reaction visualization wrappers and registry entries."""
+
 from __future__ import annotations
 
 from pathlib import Path

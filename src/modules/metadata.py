@@ -1,3 +1,5 @@
+"""Metadata detection and persistence helpers for processed chat datasets."""
+
 import logging
 import re
 import json

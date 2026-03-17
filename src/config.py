@@ -1,3 +1,5 @@
+"""Project-wide constants and filesystem paths for the data pipeline."""
+
 from pathlib import Path
 
 

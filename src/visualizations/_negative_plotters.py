@@ -1,57 +1,65 @@
+"""Low-level plot constructors for negative-reaction emoji analysis."""
+
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+
+from src.visualizations.utils import ensure_parent_dir, get_user_col, top_user_order
+
+
+def _emoji_group_counts(df: pd.DataFrame, user_col: str) -> pd.DataFrame:
+    """Build per-user per-group emoji counts."""
+    working = df[df["emoji_group"].notna()].copy()
+    return (
+        working.groupby([user_col, "emoji_group"])
+        .size()
+        .reset_index(name="count")
+    )
+
+
+def _negative_stats(df: pd.DataFrame, user_col: str) -> pd.DataFrame:
+    """Compute total and negative emoji counts plus ratio per user."""
+    exploded = df[df["emoji_group"].notna()].explode("emoji_list").dropna(subset=["emoji_list"])
+    total_emoji = exploded.groupby(user_col).size().rename("total_emoji")
+    negative_emoji = (
+        exploded[exploded["emoji_group"] == "negative_reflective"]
+        .groupby(user_col)
+        .size()
+        .rename("negative_emoji")
+    )
+    stats = pd.concat([total_emoji, negative_emoji], axis=1).fillna(0)
+    stats["ratio"] = stats["negative_emoji"] / stats["total_emoji"].replace(0, pd.NA)
+    return stats.fillna(0)
 
 
 def plot_negative_reaction_concentration(
     df: pd.DataFrame,
     out_path: str | Path = "img/negative_reaction_concentration.png",
     top_users: int = 10,
-):
+) -> None:
     """
-    Visualizes the proportion of negative-reaction emojis per user.
+    Visualize the proportion of negative-reaction emojis per user.
+
     Users are sorted descending by negative-reaction usage.
     """
 
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path = ensure_parent_dir(out_path)
 
     if "emoji_group" not in df.columns:
         raise KeyError("emoji_group column not found.")
 
-    user_col = "user" if "user" in df.columns else "sender"
-
-    df = df[df["emoji_group"].notna()].copy()
-
-    # Count per user per group
-    counts = (
-        df.groupby([user_col, "emoji_group"])
-        .size()
-        .reset_index(name="count")
-    )
-
-    # Top users by total emoji usage
-    top_user_order = (
-        counts.groupby(user_col)["count"]
-        .sum()
-        .sort_values(ascending=False)
-        .head(top_users)
-        .index
-        .tolist()
-    )
-
-    counts = counts[counts[user_col].isin(top_user_order)]
+    user_col = get_user_col(df)
+    counts = _emoji_group_counts(df, user_col)
+    selected_users = top_user_order(counts, user_col, top_users)
+    counts = counts[counts[user_col].isin(selected_users)]
 
     # Convert to proportions
-    counts["proportion"] = (
-        counts.groupby(user_col)["count"]
-        .transform(lambda x: x / x.sum())
-    )
+    group_totals = counts.groupby(user_col)["count"].transform("sum")
+    counts["proportion"] = counts["count"] / group_totals
 
     # Keep only negative_reaction group
     negative = counts[counts["emoji_group"] == "negative_reflective"].copy()
@@ -94,7 +102,7 @@ def plot_negative_reaction_concentration(
             xanchor="left",
             pad=dict(l=120)
         ),
-        xaxis_title="Proportion of Emoji Usage",
+        xaxis_title=dict(text="Proportion of Emoji Usage"),
         yaxis_title=None,
         plot_bgcolor="white",
         paper_bgcolor="white",
@@ -125,42 +133,17 @@ def plot_negative_reaction_diagnostic(
     df: pd.DataFrame,
     out_path: str | Path = "img/negative_reaction_diagnostic.png",
     top_users: int = 10,
-):
+) -> None:
     """
-    Diagnostic plot:
+    Plot diagnostic metrics for negative reactions by user.
+
     - Red bars: proportion of negative-reaction emojis
     - Black dots: total emoji usage per user
     """
 
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    user_col = "user" if "user" in df.columns else "sender"
-
-    df = df[df["emoji_group"].notna()].copy()
-
-    # Total emoji per user
-    total_emoji = (
-        df.groupby(user_col)["emoji_list"]
-        .apply(lambda x: sum(len(i) for i in x))
-    )
-
-    # Negative emoji per user
-    negative_emoji = (
-        df[df["emoji_group"] == "negative_reflective"]
-        .groupby(user_col)
-        .size()
-    )
-
-    stats = (
-        pd.DataFrame({
-            "total_emoji": total_emoji,
-            "negative_emoji": negative_emoji
-        })
-        .fillna(0)
-    )
-
-    stats["ratio"] = stats["negative_emoji"] / stats["total_emoji"]
+    out_path = ensure_parent_dir(out_path)
+    user_col = get_user_col(df)
+    stats = _negative_stats(df, user_col)
 
     # Filter top users by total emoji usage
     stats = stats.sort_values("total_emoji", ascending=False).head(top_users)
@@ -180,7 +163,7 @@ def plot_negative_reaction_diagnostic(
         x=stats["ratio"],
         orientation="h",
         name="Negative Reaction Ratio",
-        marker_color="#DB4437"
+        marker=dict(color="#DB4437"),
     ))
 
     # Black dots (total emoji)
@@ -200,12 +183,12 @@ def plot_negative_reaction_diagnostic(
             xanchor="left"
         ),
         xaxis=dict(
-            title="Proportion of Emoji Usage",
+            title=dict(text="Proportion of Emoji Usage"),
             tickformat=".0%",
             range=[0, stats["ratio"].max() * 1.2]
         ),
         xaxis2=dict(
-            title="Total Emoji Count",
+            title=dict(text="Total Emoji Count"),
             overlaying="x",
             side="top"
         ),
@@ -224,47 +207,24 @@ def plot_negative_reaction_diagnostic(
 def plot_negative_reaction_scatter(
     df: pd.DataFrame,
     out_path: str | Path = "img/negative_reaction_scatter.png",
-):
+) -> None:
     """Scatter total emoji usage versus negative reaction ratio."""
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    user_col = "user" if "user" in df.columns else "sender"
-
-    df = df[df["emoji_group"].notna()].copy()
-
-    total_emoji = (
-        df.groupby(user_col)["emoji_list"]
-        .apply(lambda x: sum(len(i) for i in x))
-    )
-
-    negative_emoji = (
-        df[df["emoji_group"] == "negative_reflective"]
-        .groupby(user_col)
-        .size()
-    )
-
-    stats = (
-        pd.DataFrame({
-            "total_emoji": total_emoji,
-            "negative_emoji": negative_emoji
-        })
-        .fillna(0)
-    )
-
-    stats["ratio"] = stats["negative_emoji"] / stats["total_emoji"]
+    out_path = ensure_parent_dir(out_path)
+    user_col = get_user_col(df)
+    stats = _negative_stats(df, user_col)
+    stats_reset = stats.reset_index().rename(columns={user_col: "user"})
 
     fig = px.scatter(
-        stats,
+        stats_reset,
         x="total_emoji",
         y="ratio",
-        hover_name=stats.index,
+        hover_name="user",
     )
 
     fig.update_layout(
-        title="Negative-Reaction Usage Decreases as Emoji Volume Increases",
-        xaxis_title="Total Emoji Used",
-        yaxis_title="Proportion of Negative-Reaction Emoji",
+        title=dict(text="Negative-Reaction Usage Decreases as Emoji Volume Increases"),
+        xaxis_title=dict(text="Total Emoji Used"),
+        yaxis_title=dict(text="Proportion of Negative-Reaction Emoji"),
         plot_bgcolor="white",
         paper_bgcolor="white",
         height=600,

@@ -1,3 +1,5 @@
+"""Low-level plot constructors for chat activity visualizations."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -138,9 +140,6 @@ def plot_chat_activity_distribution(
     )
 
     fig.update_xaxes(dtick=3)
-
-    # mark peak hour
-    peak_row = hourly_counts.loc[hourly_counts["messages"].idxmax()]
 
     if output:
         fig.write_image(output)

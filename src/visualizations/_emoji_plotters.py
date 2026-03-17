@@ -1,3 +1,5 @@
+"""Low-level plot constructors for emoji-focused visualizations."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -6,35 +8,15 @@ from typing import Optional
 import pandas as pd
 import plotly.express as px
 
-
-def _ensure_parent_dir(out_path: str | Path) -> Path:
-    """Ensure the output directory exists and return the Path."""
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    return out_path
-
-
-def _get_user_col(df: pd.DataFrame, preferred: Optional[str] = None) -> str:
-    """Resolve the user column name from the dataframe."""
-    if preferred and preferred in df.columns:
-        return preferred
-    if "user" in df.columns:
-        return "user"
-    if "sender" in df.columns:
-        return "sender"
-    raise KeyError("No user column found.")
+from src.visualizations.utils import ensure_parent_dir, get_user_col, top_user_order
 
 
 def plot_overall_emoji_distribution(
         df: pd.DataFrame,
         out_path: str | Path = "img/overall_emoji_distribution.png",
 ):
-    """
-    Plots overall emoji group distribution across the full dataset.
-    """
-
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
+    """Plot overall emoji group distribution across the full dataset."""
+    out_path = ensure_parent_dir(out_path)
 
     if "emoji_group" not in df.columns:
         raise KeyError("emoji_group column not found.")
@@ -109,8 +91,9 @@ def plot_emoji_heatmap_png(
     top_n_emojis: int = 10,
     user_col: Optional[str] = None,
 ):
-    out_path = _ensure_parent_dir(out_path)
-    user_col = _get_user_col(df, preferred=user_col)
+    """Plot a user-by-emoji heatmap for the most-used emojis."""
+    out_path = ensure_parent_dir(out_path)
+    user_col = get_user_col(df, preferred=user_col)
 
     if "emoji_list" not in df.columns:
         raise KeyError("emoji_list column not found.")
@@ -163,8 +146,9 @@ def plot_emoji_type_per_user(
     out_path: str | Path = "img/emoji_group_distribution.png",
     top_users: int = 10,
 ):
-    out_path = _ensure_parent_dir(out_path)
-    user_col = _get_user_col(df)
+    """Plot per-user emoji group proportions for top contributors."""
+    out_path = ensure_parent_dir(out_path)
+    user_col = get_user_col(df)
 
     if "emoji_group" not in df.columns:
         raise KeyError("emoji_group column not found.")
@@ -177,21 +161,12 @@ def plot_emoji_type_per_user(
         .reset_index(name="count")
     )
 
-    top_user_order = (
-        counts.groupby(user_col)["count"]
-        .sum()
-        .sort_values(ascending=False)
-        .head(top_users)
-        .index
-        .tolist()
-    )
+    selected_users = top_user_order(counts, user_col, top_users)
 
-    counts = counts[counts[user_col].isin(top_user_order)]
+    counts = counts[counts[user_col].isin(selected_users)]
 
-    counts["count"] = (
-        counts.groupby(user_col)["count"]
-        .transform(lambda x: x / x.sum())
-    )
+    group_totals = counts.groupby(user_col)["count"].transform("sum")
+    counts["count"] = counts["count"] / group_totals
 
     dominant = (
         counts.sort_values("count", ascending=False)

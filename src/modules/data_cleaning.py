@@ -1,3 +1,5 @@
+"""Cleaning and parsing logic for WhatsApp export text lines."""
+
 import pandas as pd
 import logging
 import re
@@ -45,7 +47,6 @@ def extract_emojis(text: str) -> list[str]:
 
 
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
-    """Parse raw chat lines into a cleaned, structured dataframe."""
     """
     Parse raw WhatsApp export lines into structured messages.
 

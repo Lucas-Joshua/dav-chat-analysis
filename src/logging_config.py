@@ -1,3 +1,5 @@
+"""Logging setup utilities for console and rotating file handlers."""
+
 import logging
 from logging.handlers import RotatingFileHandler
 from datetime import datetime

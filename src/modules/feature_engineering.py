@@ -1,3 +1,5 @@
+"""Feature engineering steps for emoji, time, length, and incident signals."""
+
 from __future__ import annotations
 
 import re
@@ -145,11 +147,17 @@ def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
     if "datetime" not in df.columns:
         raise KeyError("datetime column not found.")
 
-    df["datetime"] = pd.to_datetime(df["datetime"])
-
-    df["hour"] = df["datetime"].dt.hour
-    df["day_of_week"] = df["datetime"].dt.day_name()
-    df["date_only"] = df["datetime"].dt.date
+    datetime_series = pd.to_datetime(df["datetime"], errors="coerce")
+    df["datetime"] = datetime_series
+    df["hour"] = datetime_series.map(
+        lambda value: int(value.hour) if pd.notna(value) else None
+    )
+    df["day_of_week"] = datetime_series.map(
+        lambda value: value.strftime("%A") if pd.notna(value) else None
+    )
+    df["date_only"] = datetime_series.map(
+        lambda value: value.date() if pd.notna(value) else None
+    )
 
     return df
 
