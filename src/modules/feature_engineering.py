@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import re
 import pandas as pd
 import emoji
-import re
 
 
 EMOJI_CATEGORY_MAP = {
@@ -50,15 +50,51 @@ CATEGORY_REDUCTION_MAP = {
 }
 
 
+INCIDENT_BOW_TERMS = [
+    "reserve",
+    "reserve ride",
+    "cutaway",
+    "malfunction",
+    "line twist",
+    "hard opening",
+    "low turn",
+    "two out",
+    "canopy collision",
+    "bag lock",
+    "horseshoe",
+    "pilot chute in tow",
+    "storing",
+    "lijn twist",
+    "harde opening",
+    "botsing",
+    "noodparachute",
+    "afwerp",
+    "afwerp hendel",
+    "incident",
+    "ongeval",
+    "gewond",
+    "fatal",
+]
+
+
+def _build_incident_pattern() -> str:
+    escaped = [re.escape(t).replace(r"\ ", r"\s+") for t in INCIDENT_BOW_TERMS]
+    return r"\b(?:{})\b".format("|".join(escaped))
+
+
 def extract_emojis(text: str) -> list[str]:
+    """Extract a list of emojis from text."""
     if not isinstance(text, str):
         return []
     return [e["emoji"] for e in emoji.emoji_list(text)]
 
+
 def add_emoji_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add emoji list, count, and presence features to the dataset."""
     df = df.copy()
 
     msg_col = "message" if "message" in df.columns else "original_message"
+
     if msg_col not in df.columns:
         raise KeyError("No message column found.")
 
@@ -68,62 +104,42 @@ def add_emoji_features(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+
+def _determine_emoji_category(emojis: list[str]) -> tuple[str | None, str | None]:
+    """Map the first recognized emoji to a type and reduced group."""
+
+    if not emojis:
+        return None, None
+
+    for e in emojis:
+        emoji_type = EMOJI_CATEGORY_MAP.get(e)
+
+        if emoji_type:
+            emoji_group = CATEGORY_REDUCTION_MAP.get(emoji_type)
+            return emoji_type, emoji_group
+
+    return None, None
+
+
 def add_emoji_category(df: pd.DataFrame) -> pd.DataFrame:
+    """Add emoji type and reduced group columns based on emoji list."""
+
     df = df.copy()
 
     if "emoji_list" not in df.columns:
         raise KeyError("emoji_list column not found.")
 
-    df = df.explode("emoji_list").dropna(subset=["emoji_list"])
+    categories = df["emoji_list"].apply(_determine_emoji_category)
 
-    df["emoji_type"] = df["emoji_list"].map(EMOJI_CATEGORY_MAP)
-    df["emoji_group"] = df["emoji_type"].map(CATEGORY_REDUCTION_MAP)
-    df = df.dropna(subset=["emoji_group"])
+    df["emoji_type"] = categories.apply(lambda x: x[0])
+    df["emoji_group"] = categories.apply(lambda x: x[1])
 
     return df
 
-def _detect_user_col(df: pd.DataFrame, preferred: str | None = None) -> str:
-    if preferred and preferred in df.columns:
-        return preferred
-    if "user" in df.columns:
-        return "user"
-    if "sender" in df.columns:
-        return "sender"
-    raise KeyError("No user column found.")
-
-def get_top_emojis_per_user(
-    df: pd.DataFrame,
-    top_n: int = 5,
-    user_col: str | None = None
-) -> pd.DataFrame:
-
-    user_col = _detect_user_col(df, preferred=user_col)
-
-    if "emoji_list" not in df.columns:
-        raise KeyError("emoji_list column not found.")
-
-    exploded = df.explode("emoji_list").dropna(subset=["emoji_list"])
-    if exploded.empty:
-        return pd.DataFrame(columns=[user_col, "emoji_list", "count"])
-
-    counts = (
-        exploded
-        .groupby([user_col, "emoji_list"])
-        .size()
-        .reset_index(name="count")
-    )
-
-    top_per_user = (
-        counts
-        .sort_values([user_col, "count"], ascending=[True, False])
-        .groupby(user_col)
-        .head(top_n)
-        .reset_index(drop=True)
-    )
-
-    return top_per_user
 
 def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add hour, day name, and date-only columns from datetime."""
+
     df = df.copy()
 
     if "datetime" not in df.columns:
@@ -137,38 +153,40 @@ def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
 
     return df
 
+
 def add_message_length(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add message length feature based on message text.
-    """
+    """Add message length in characters."""
 
     df = df.copy()
 
-    df["message_length"] = df["message"].str.len()
+    df["message_length"] = df["message"].astype(str).str.len()
 
     return df
 
-def add_has_emoji_feature(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add feature indicating whether a message contains at least one emoji.
-    """
 
+def add_has_emoji_feature(df: pd.DataFrame) -> pd.DataFrame:
+    """Add boolean flag indicating emoji presence."""
     df = df.copy()
 
-    emoji_pattern = re.compile(
-        "["
-        "\U0001F600-\U0001F64F"
-        "\U0001F300-\U0001F5FF"
-        "\U0001F680-\U0001F6FF"
-        "\U0001F1E0-\U0001F1FF"
-        "\U00002700-\U000027BF"
-        "\U000024C2-\U0001F251"
-        "]",
-        flags=re.UNICODE,
-    )
+    if "emoji_count" not in df.columns:
+        raise KeyError("emoji_count column not found. Run add_emoji_features first.")
 
-    df["has_emoji"] = df["message"].astype(str).apply(
-        lambda x: bool(emoji_pattern.search(x))
-    )
+    df["has_emoji"] = df["emoji_count"] > 0
 
+    return df
+
+
+def add_incident_bow_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add bag-of-words incident features (no ML model)."""
+    df = df.copy()
+    if "message" not in df.columns:
+        raise KeyError("message column not found.")
+
+    pattern = _build_incident_pattern()
+    text = df["message"].fillna("").astype(str)
+
+    df["incident_bow_hits"] = text.str.count(pattern, flags=re.IGNORECASE).fillna(0).astype(int)
+    # Simple normalized score in [0, 1] from hit count.
+    df["incident_bow_score"] = (df["incident_bow_hits"] / (df["incident_bow_hits"] + 1)).astype(float)
+    df["is_incident_message"] = (df["incident_bow_hits"] >= 1).astype(int)
     return df

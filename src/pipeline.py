@@ -4,154 +4,62 @@ import logging
 from pathlib import Path
 
 from src import config
-from src.logging_config import setup_logging
-from src.modules import data_loader, data_cleaning
+from src.modules import anonymizer, data_cleaning, data_loader
 from src.modules.feature_engineering import (
-    add_emoji_features,
     add_emoji_category,
-    add_time_features,
+    add_emoji_features,
+    add_has_emoji_feature,
+    add_incident_bow_features,
     add_message_length,
-    add_has_emoji_feature
+    add_time_features,
 )
-from src.modules.visualization import (
-    plot_overall_emoji_distribution,
-    plot_negative_reaction_concentration,
-    plot_negative_reaction_scatter,
-    plot_chat_activity_by_hour,
-    plot_chat_activity_distribution,
-    plot_emoji_usage_by_hour
-)
+from src.visualizations import run_selected
 
-# ==================================================
-# VISUALIZATION TOGGLES
-# ==================================================
-GENERATE_OVERALL_DISTRIBUTION: bool = False
-GENERATE_NEGATIVE_CONCENTRATION: bool = False
-GENERATE_NEGATIVE_SCATTER: bool = False
-GENERATE_HOURLY_ACTIVITY: bool = False
-GENERATE_MESSAGE_LENGTH_DISTRIBUTION: bool = False
-GENERATE_EMOJI_USAGE_BY_HOUR: bool = True
-
-# ==================================================
+VISUALIZATION_SELECTIONS = {
+    "overall_emoji_distribution": False,
+    "emoji_heatmap": False,
+    "emoji_type_per_user": False,
+    "emoji_usage_by_hour": False,
+    "negative_reaction_concentration": False,
+    "negative_reaction_diagnostic": False,
+    "negative_reaction_scatter": False,
+    "chat_activity_by_hour": False,
+    "chat_activity_distribution": False,
+    "response_time_suite": False,
+    "incident_discussion_timeline": True,
+    "incident_activity_correlation": True,
+}
 
 
 def run_pipeline(raw_path: str | Path) -> None:
-    """
-    Main pipeline execution.
-
-    Steps:
-    1. Load raw chat data
-    2. Clean dataset
-    3. Add engineered features
-    4. Save processed dataset
-    5. Generate selected visualizations
-    """
-
-    # -------------------------
-    # Setup logging
-    # -------------------------
-    setup_logging(log_to_file=True)
+    """Run full data pipeline without ML, using feature engineering + BOW."""
     logger = logging.getLogger(__name__)
+    enabled = [name for name, on in VISUALIZATION_SELECTIONS.items() if on]
+    logger.info("Pipeline config loaded. %d visualizations enabled.", len(enabled))
 
-    logger.info("========== PIPELINE STARTED ==========")
+    logger.info("Step 1/6: load")
+    df = data_loader.load_raw_chat(Path(raw_path))
 
-    raw_path = Path(raw_path)
+    logger.info("Step 2/6: clean")
+    df = data_cleaning.clean_data(df)
 
-    if not raw_path.exists():
-        logger.error(f"Raw file not found: {raw_path}")
-        raise FileNotFoundError(f"Raw file not found: {raw_path}")
+    logger.info("Step 3/6: anonymize")
+    df = anonymizer.apply_anonymization(df)
 
-    # Ensure output directories exist
-    config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-    config.IMG_DIR.mkdir(parents=True, exist_ok=True)
-
-    # -------------------------
-    # Load
-    # -------------------------
-    logger.info("Loading raw chat data...")
-    df_raw = data_loader.load_raw_chat(raw_path)
-
-    # -------------------------
-    # Clean
-    # -------------------------
-    logger.info("Cleaning data...")
-    df = data_cleaning.clean_data(df_raw)
-
-    # -------------------------
-    # Feature engineering
-    # -------------------------
-    logger.info("Adding emoji features...")
+    logger.info("Step 4/6: add features")
     df = add_emoji_features(df)
-
-    logger.info("Adding emoji categories...")
     df = add_emoji_category(df)
-
-    logger.info("Adding time features...")
     df = add_time_features(df)
-
-    logger.info("Adding message length feature...")
     df = add_message_length(df)
-
-    logger.info("Adding has emoji feature...")
     df = add_has_emoji_feature(df)
+    df = add_incident_bow_features(df)
+    logger.info("Dataset shape after processing: %s", df.shape)
 
-    logger.info(f"Dataset shape after processing: {df.shape}")
+    logger.info("Step 5/6: save processed files")
+    config.PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(config.PROCESSED_DIR / "clean_chat_processed.parquet", index=False)
+    df.to_csv(config.PROCESSED_DIR / "clean_chat_processed.csv", index=False)
 
-    # -------------------------
-    # Save processed dataset
-    # -------------------------
-    processed_path = config.PROCESSED_DIR / "clean_chat_processed.parquet"
-    logger.info(f"Saving processed dataset to: {processed_path}")
-    df.to_parquet(processed_path, index=False)
-
-    # -------------------------
-    # Visualizations
-    # -------------------------
-    logger.info("Generating selected visualizations...")
-
-    if GENERATE_OVERALL_DISTRIBUTION:
-        logger.info("→ Overall emoji distribution")
-        plot_overall_emoji_distribution(
-            df,
-            out_path=config.IMG_DIR / "overall_emoji_distribution.png",
-        )
-
-    if GENERATE_NEGATIVE_CONCENTRATION:
-        logger.info("→ Negative reaction concentration")
-        plot_negative_reaction_concentration(
-            df,
-            out_path=config.IMG_DIR / "negative_reaction_concentration.png",
-        )
-
-    if GENERATE_NEGATIVE_SCATTER:
-        logger.info("→ Negative reaction scatter diagnostic")
-        plot_negative_reaction_scatter(
-            df,
-            out_path=config.IMG_DIR / "negative_reaction_scatter.png",
-        )
-
-    if GENERATE_HOURLY_ACTIVITY:
-        logger.info("→ Hourly activity plot")
-        plot_chat_activity_by_hour(
-            df,
-            out_path=config.IMG_DIR / "chat_activity_by_hour.png",
-        )
-
-    if GENERATE_MESSAGE_LENGTH_DISTRIBUTION:
-        logger.info("→ Message length distribution plot")
-
-        plot_chat_activity_distribution(
-            df,
-            config.IMG_DIR / "plot_chat_activity_distribution.png",
-        )
-
-    if GENERATE_EMOJI_USAGE_BY_HOUR:
-        logger.info("→ Emoji usage by hour plot")
-
-        plot_emoji_usage_by_hour(
-            df,
-            config.IMG_DIR / "plot_emoji_usage_by_hour.png",
-        )
-
-
-    logger.info("========== PIPELINE FINISHED SUCCESSFULLY ==========")
+    logger.info("Step 6/6: generate visualizations")
+    config.IMG_DIR.mkdir(parents=True, exist_ok=True)
+    run_selected(df, VISUALIZATION_SELECTIONS, out_dir=config.IMG_DIR)

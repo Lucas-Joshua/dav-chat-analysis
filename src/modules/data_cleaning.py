@@ -1,61 +1,63 @@
-import re
-import logging
 import pandas as pd
-import emoji
+import logging
+import re
 
 logger = logging.getLogger(__name__)
 
-# Match WhatsApp lines like:
-# [06-10-2024, 09:04:09] ~ Sander: message
-# [30-10-2024, 13:42:26] Sabien Skydive Hilversum: message
 MESSAGE_PATTERN = re.compile(
-    r"^\[(\d{2}-\d{2}-\d{4}),\s*(\d{2}:\d{2}:\d{2})\]\s*(.*?):\s*(.*)$"
+    r"^\[(\d{2}/\d{2}/\d{4}), (\d{2}:\d{2}:\d{2})\] ([^:]+): (.*)$"
+)
+SYSTEM_EVENT_PATTERN = re.compile(
+    r"^\[(\d{2}/\d{2}/\d{4}), (\d{2}:\d{2}:\d{2})\] (.+)$"
+)
+DELETED_MESSAGE_PATTERN = re.compile(
+    r"^(?:This message was deleted\.?|Dit bericht is verwijderd\.?|"
+    r"Je hebt dit bericht verwijderd\.?)$",
+    flags=re.IGNORECASE,
 )
 
-# Common invisible chars in WhatsApp exports
-_INVISIBLE = ["\u202f", "\u200e", "\u200f", "\ufeff", "\u200b", "\u202a", "\u202b", "\u202c", "\u202d", "\u202e", "‎"]
 
-
-def _strip_invisible(s: str) -> str:
-    s = "" if s is None else str(s)
-    for ch in _INVISIBLE:
-        s = s.replace(ch, "")
-    # normalize weird spaces
-    s = s.replace("\xa0", " ")
-    s = " ".join(s.split())
-    return s.strip()
+def _strip_invisible(text: str) -> str:
+    """Remove zero-width and control characters from text."""
+    return text.replace("\u200e", "").replace("\u202f", "").strip()
 
 
 def normalize_sender(sender: str) -> str:
-    sender = _strip_invisible(sender)
-    # WhatsApp sometimes prefixes with "~"
-    if sender.startswith("~"):
-        sender = sender.lstrip("~").strip()
-    return sender
+    """Normalize sender names by trimming and standardizing whitespace."""
+    return sender.strip()
 
 
 def extract_emojis(text: str) -> list[str]:
-    """
-    Robust emoji extraction (handles ZWJ sequences like 🤷‍♂️).
-    Returns list of emoji characters, not names.
-    """
-    if not isinstance(text, str):
-        return []
-    return [e["emoji"] for e in emoji.emoji_list(text)]
+    """Extract emojis from text using the emoji library."""
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"
+        "\U0001F300-\U0001F5FF"
+        "\U0001F680-\U0001F6FF"
+        "\U0001F1E0-\U0001F1FF"
+        "\U00002700-\U000027BF"
+        "\U000024C2-\U0001F251"
+        "]+",
+        flags=re.UNICODE,
+    )
+
+    return emoji_pattern.findall(text)
 
 
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Parse raw chat lines into a cleaned, structured dataframe."""
     """
     Parse raw WhatsApp export lines into structured messages.
-    Keeps emojis as real emojis (no name conversion).
+
     Produces:
-      - datetime (datetime64)
-      - sender (str)
-      - original_message (str)
-      - message (str)  # cleaned text (still contains emojis)
-      - emoji_list (list[str])
-      - contains_emoji (bool)
+      - datetime
+      - sender
+      - original_message
+      - message
+      - emoji_list
+      - contains_emoji
     """
+
     logger.info("Starting data cleaning process")
 
     if "raw" not in df.columns:
@@ -65,14 +67,15 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     current = None
 
     for line in df["raw"]:
+
         line = "" if line is None else str(line).rstrip("\n")
         stripped = _strip_invisible(line)
 
         match = MESSAGE_PATTERN.match(stripped)
 
         if match:
-            # flush previous
-            if current:
+
+            if current is not None:
                 messages.append(current)
 
             date, time, sender, msg = match.groups()
@@ -83,36 +86,56 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
                 "original_message": (msg or "").strip(),
             }
 
-        elif current and stripped:
-            # continuation of multi-line message
-            current["original_message"] += "\n" + stripped
-
-        else:
-            # ignore stray lines before first message or empty lines
+        elif SYSTEM_EVENT_PATTERN.match(stripped):
+            if current is not None:
+                messages.append(current)
+                current = None
             continue
 
-    if current:
+        elif current is not None and stripped:
+
+            current["original_message"] += "\n" + stripped
+
+    if current is not None:
         messages.append(current)
 
     df_clean = pd.DataFrame(messages)
 
-    # Parse datetime
+    if df_clean.empty:
+        raise ValueError(
+            "No messages parsed. Check MESSAGE_PATTERN against WhatsApp export format."
+        )
+
     df_clean["datetime"] = pd.to_datetime(
         df_clean["datetime"],
-        format="%d-%m-%Y %H:%M:%S",
+        format="%d/%m/%Y %H:%M:%S",
         errors="coerce",
     )
 
-    # Basic text cleaning
     df_clean["sender"] = df_clean["sender"].astype(str).map(normalize_sender)
-    df_clean["original_message"] = df_clean["original_message"].astype(str).map(_strip_invisible).str.strip()
 
-    # Keep message as cleaned original (do NOT replace emojis)
+    df_clean["original_message"] = (
+        df_clean["original_message"]
+        .astype(str)
+        .map(_strip_invisible)
+        .str.strip()
+    )
+
     df_clean["message"] = df_clean["original_message"]
 
-    # Emoji features
+    # Remove non-content rows that should not be analyzed as real messages.
+    df_clean = df_clean.loc[
+        ~df_clean["message"].fillna("").astype(str).str.match(DELETED_MESSAGE_PATTERN)
+    ].copy()
+
     df_clean["emoji_list"] = df_clean["message"].apply(extract_emojis)
+
     df_clean["contains_emoji"] = df_clean["emoji_list"].apply(lambda x: len(x) > 0)
 
+    df_clean = df_clean.drop_duplicates(
+        subset=["datetime", "sender", "original_message"]
+    ).reset_index(drop=True)
+
     logger.info(f"Data cleaning completed ({len(df_clean)} messages)")
+
     return df_clean

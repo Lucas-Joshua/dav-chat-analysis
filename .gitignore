@@ -3,5 +3,7 @@
 /data/processed/*
 /uv.lock
 /notebooks/.ipynb_checkpoints/
-/img/*
+/img/
 !/img/.gitkeep
+/ai_queue.md
+/logs/*

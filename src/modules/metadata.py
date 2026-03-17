@@ -11,20 +11,24 @@ WHATSAPP_CONTROL_CHARS = ["\u200e", "\u202a", "\u202c"]
 
 
 def contains_control_char(text: str) -> bool:
+    """Check whether text contains invisible control characters."""
     return any(char in text for char in WHATSAPP_CONTROL_CHARS)
 
 
 def has_real_text(text: str) -> bool:
+    """Check whether text contains meaningful content after stripping control chars."""
     return bool(re.search(r"[A-Za-z0-9]", text))
 
 
 def detect_group_name(df: pd.DataFrame) -> str | None:
+    """Detect the WhatsApp group name from system messages."""
     if df.empty or "sender" not in df.columns:
         return None
     return str(df.iloc[0]["sender"])
 
 
 def is_system_message(row: pd.Series, group_name: str | None) -> bool:
+    """Identify system messages using known WhatsApp patterns."""
     sender = str(row.get("sender", ""))
     message = str(row.get("message", ""))
 
@@ -41,6 +45,7 @@ def is_system_message(row: pd.Series, group_name: str | None) -> bool:
 
 
 def detect_chat_start(df: pd.DataFrame) -> pd.Timestamp | None:
+    """Detect chat start timestamp from system messages."""
     required_columns = {"sender", "message", "datetime"}
     if not required_columns.issubset(df.columns):
         raise ValueError("Missing required columns for metadata generation")
@@ -65,6 +70,7 @@ def detect_chat_start(df: pd.DataFrame) -> pd.Timestamp | None:
 
 
 def generate_metadata(df: pd.DataFrame, raw_file_path: Path) -> dict:
+    """Generate metadata for a chat dataset and its raw file."""
     raw_start = df["datetime"].min() if not df.empty else None
     real_start = detect_chat_start(df)
 
@@ -80,6 +86,7 @@ def generate_metadata(df: pd.DataFrame, raw_file_path: Path) -> dict:
 
 
 def save_metadata(metadata: dict) -> None:
+    """Persist metadata to the processed metadata JSON file."""
     with open(config.METADATA_FILE, "w", encoding="utf-8") as f:
         json.dump(metadata, f, indent=4, ensure_ascii=False)
 

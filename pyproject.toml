@@ -20,4 +20,5 @@ dependencies = [
     "pandas-stubs~=3.0.0",
     "plotly>=6.5.2",
     "kaleido>=0.2.1",
+    "seaborn>=0.13.2",
 ]

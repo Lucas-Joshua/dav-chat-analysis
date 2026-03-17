@@ -11,6 +11,7 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 def setup_logging(level=logging.INFO, log_to_file=True):
+    """Configure console and optional file logging for the pipeline."""
     root_logger = logging.getLogger()
 
     if root_logger.handlers:
@@ -54,3 +55,14 @@ def setup_logging(level=logging.INFO, log_to_file=True):
         root_logger.addHandler(file_handler)
 
     logging.captureWarnings(True)
+
+    # Reduce noisy third-party logs so pipeline progress stays readable.
+    for noisy_logger in [
+        "matplotlib",
+        "matplotlib.font_manager",
+        "PIL",
+        "choreographer",
+        "kaleido",
+        "urllib3",
+    ]:
+        logging.getLogger(noisy_logger).setLevel(logging.WARNING)

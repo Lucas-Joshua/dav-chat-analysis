@@ -29,6 +29,7 @@ def load_raw_chat(path: Path, encoding: str | None = None) -> pd.DataFrame:
 
 
 def load_clean_csv(path: Path) -> pd.DataFrame:
+    """Load a cleaned CSV dataset and parse datetime columns."""
     if not path.exists():
         raise FileNotFoundError(f"CSV file not found: {path}")
 
@@ -43,6 +44,7 @@ def load_clean_csv(path: Path) -> pd.DataFrame:
 
 
 def load_clean_parquet(path: Path) -> pd.DataFrame:
+    """Load a cleaned Parquet dataset."""
     if not path.exists():
         raise FileNotFoundError(f"Parquet file not found: {path}")
 
