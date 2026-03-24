@@ -8,6 +8,7 @@ from typing import Optional
 import pandas as pd
 import plotly.express as px
 
+from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
 from src.visualizations.utils import ensure_parent_dir, get_user_col, top_user_order
 
 
@@ -37,46 +38,39 @@ def plot_overall_emoji_distribution(
     # Sort descending
     counts = counts.sort_values("proportion", ascending=False)
 
-    color_map = {
-        "humor": "#F4B400",
-        "positive": "#34A853",
-        "social": "#4285F4",
-        "negative_reflective": "#DB4437"
-    }
-
     fig = px.bar(
         counts,
         x="emoji_group",
         y="proportion",
         color="emoji_group",
-        color_discrete_map=color_map,
+        color_discrete_map=DEFAULT_PLOT_SETTINGS.emoji_group_colors,
     )
 
     fig.update_layout(
-        title=dict(
-            text=(
-                "Overall Emoji Usage Is Dominated by Humor"
-                "<br><span style='font-size:14px;'>"
-                "Distribution across entire dataset"
-                "</span>"
+        DEFAULT_PLOT_SETTINGS.base_plotly_layout(
+            title=dict(
+                text=(
+                    "Overall Emoji Usage Is Dominated by Humor"
+                    "<br><span style='font-size:14px;'>"
+                    "Distribution across entire dataset"
+                    "</span>"
+                ),
+                x=0,
+                xanchor="left",
+                pad=dict(l=80)
             ),
-            x=0,
-            xanchor="left",
-            pad=dict(l=80)
-        ),
-        xaxis_title="Emoji Category",
-        yaxis_title="Proportion of Emoji Usage",
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        margin=dict(l=80, r=40, t=120, b=60),
-        height=500,
-        showlegend=False,
+            xaxis_title="Emoji Category",
+            yaxis_title="Proportion of Emoji Usage",
+            margin=dict(l=80, r=40, t=120, b=60),
+            height=500,
+            showlegend=False,
+        )
     )
 
     fig.update_yaxes(
         tickformat=".0%",
         showgrid=True,
-        gridcolor="rgba(0,0,0,0.08)",
+        gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
         zeroline=False
     )
 
@@ -135,7 +129,7 @@ def plot_emoji_heatmap_png(
     fig.update_layout(
         xaxis_title="Emoji",
         yaxis_title="User",
-        font=dict(size=14),
+        **DEFAULT_PLOT_SETTINGS.base_plotly_layout(),
     )
 
     fig.write_image(out_path, scale=2)
@@ -182,13 +176,6 @@ def plot_emoji_type_per_user(
         ordered=True
     )
 
-    color_map = {
-        "humor": "#F4B400",
-        "positive": "#34A853",
-        "social": "#4285F4",
-        "negative_reflective": "#DB4437"
-    }
-
     fig = px.bar(
         counts,
         y=user_col,
@@ -196,7 +183,7 @@ def plot_emoji_type_per_user(
         color="emoji_group",
         orientation="h",
         barmode="stack",
-        color_discrete_map=color_map,
+        color_discrete_map=DEFAULT_PLOT_SETTINGS.emoji_group_colors,
         title="Comparing Communicative Styles Across Top 10 Users",
     )
 
@@ -204,9 +191,7 @@ def plot_emoji_type_per_user(
         xaxis_title="Percentage of Emoji Usage",
         yaxis_title="User",
         legend_title="Communicative Style",
-        font=dict(size=14),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
+        **DEFAULT_PLOT_SETTINGS.base_plotly_layout(),
     )
 
     fig.write_image(out_path, scale=2)
@@ -236,7 +221,7 @@ def plot_emoji_usage_by_hour(
         hourly_emoji,
         x="hour",
         y="emoji_probability",
-        color_discrete_sequence=["#CFCFCF"],
+        color_discrete_sequence=[DEFAULT_PLOT_SETTINGS.neutral_color],
         labels={
             "hour": "Hour of Day",
             "emoji_probability": "Probability of Emoji in Message"
@@ -244,7 +229,7 @@ def plot_emoji_usage_by_hour(
     )
 
     fig.update_layout(
-        template="simple_white",
+        template=DEFAULT_PLOT_SETTINGS.plotly_template,
         bargap=0.35,
         showlegend=False,
         title={
@@ -258,7 +243,7 @@ def plot_emoji_usage_by_hour(
     )
 
     fig.update_xaxes(dtick=3)
-    fig.update_yaxes(range=[0, 1])
+    fig.update_yaxes(range=[0, 1], showgrid=True, gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor, zeroline=False)
 
     if output:
         fig.write_image(output)

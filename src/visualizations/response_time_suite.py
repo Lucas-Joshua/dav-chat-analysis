@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
+
 PLOT_NAME = "response_time_suite"
 
 
@@ -77,7 +79,7 @@ def generate(df: pd.DataFrame, out_dir: str | Path | None = None) -> None:
         "Sunday",
     ]
     hours = list(range(24))
-    plt.style.use("seaborn-v0_8-whitegrid")
+    plt.style.use(DEFAULT_PLOT_SETTINGS.matplotlib_style)
 
     median_by_day_hour = (
         df.groupby(["day_of_week", "hour"])["response_minutes"]
@@ -101,13 +103,13 @@ def generate(df: pd.DataFrame, out_dir: str | Path | None = None) -> None:
             ax.plot(
                 active_range,
                 day_series.loc[active_range],
-                color="#1f77b4",
+                color=DEFAULT_PLOT_SETTINGS.primary_color,
                 linewidth=2,
             )
             ax.scatter(
                 valid.index,
                 valid.values,
-                color="#1f77b4",
+                color=DEFAULT_PLOT_SETTINGS.primary_color,
                 s=18,
                 alpha=0.8,
             )
@@ -118,7 +120,7 @@ def generate(df: pd.DataFrame, out_dir: str | Path | None = None) -> None:
 
     axes[-1].axis("off")
 
-    fig.savefig(output_dir / "daily_response_pattern_small_multiples.png", dpi=150)
+    fig.savefig(output_dir / "daily_response_pattern_small_multiples.png", dpi=DEFAULT_PLOT_SETTINGS.dpi)
     plt.close(fig)
 
     # 2) Fast-response + activity view by hour
@@ -142,7 +144,7 @@ def generate(df: pd.DataFrame, out_dir: str | Path | None = None) -> None:
         regular.index,
         regular["median_response"],
         s=marker_sizes.loc[regular.index],
-        color="#9e9e9e",
+        color=DEFAULT_PLOT_SETTINGS.neutral_color,
         alpha=0.7,
         linewidths=0,
         zorder=1,
@@ -152,7 +154,7 @@ def generate(df: pd.DataFrame, out_dir: str | Path | None = None) -> None:
         fast.index,
         fast["median_response"],
         s=marker_sizes.loc[fast.index],
-        color="green",
+        color=DEFAULT_PLOT_SETTINGS.success_color,
         alpha=0.9,
         edgecolors="white",
         linewidths=0.5,
@@ -170,18 +172,18 @@ def generate(df: pd.DataFrame, out_dir: str | Path | None = None) -> None:
 
     fig.tight_layout()
 
-    fig.savefig(output_dir / "overlay_response_trend.png", dpi=150)
-    fig.savefig(output_dir / "response_time_spike_hours_line.png", dpi=150)
+    fig.savefig(output_dir / "overlay_response_trend.png", dpi=DEFAULT_PLOT_SETTINGS.dpi)
+    fig.savefig(output_dir / "response_time_spike_hours_line.png", dpi=DEFAULT_PLOT_SETTINGS.dpi)
     plt.close(fig)
 
     # 3) Response time distribution
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.hist(df["response_minutes"], bins=30, color="#9467bd", edgecolor="white")
+    ax.hist(df["response_minutes"], bins=30, color=DEFAULT_PLOT_SETTINGS.accent_color, edgecolor="white")
     ax.set_title("Response Time Distribution")
     ax.set_xlabel("Response time (minutes)")
     ax.set_ylabel("Count")
 
-    fig.savefig(output_dir / "response_time_distribution.png", dpi=150)
+    fig.savefig(output_dir / "response_time_distribution.png", dpi=DEFAULT_PLOT_SETTINGS.dpi)
     plt.close(fig)
 
 

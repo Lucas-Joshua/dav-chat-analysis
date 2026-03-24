@@ -9,6 +9,8 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
+
 
 def plot_chat_activity_by_hour(
     df: pd.DataFrame,
@@ -45,7 +47,8 @@ def plot_chat_activity_by_hour(
 
     fig.update_traces(
         mode="lines",
-        line=dict(width=3)
+        line=dict(width=3, color=DEFAULT_PLOT_SETTINGS.primary_color),
+        marker=dict(color=DEFAULT_PLOT_SETTINGS.primary_color),
     )
 
     fig.update_xaxes(
@@ -53,24 +56,19 @@ def plot_chat_activity_by_hour(
         tickmode="linear",
         dtick=2,
         showgrid=True,
-        gridcolor="rgba(0,0,0,0.08)",
+        gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
         zeroline=False,
         constrain="domain"
     )
 
     fig.update_yaxes(
         showgrid=True,
-        gridcolor="rgba(0,0,0,0.08)",
+        gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
         zeroline=False,
         title="Number of Messages"
     )
 
-    fig.update_layout(
-        font=dict(size=14),
-        margin=dict(l=60, r=60, t=80, b=60),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-    )
+    fig.update_layout(DEFAULT_PLOT_SETTINGS.base_plotly_layout())
 
     fig.add_annotation(
         x=12,
@@ -118,7 +116,7 @@ def plot_chat_activity_distribution(
         hourly_counts,
         x="hour",
         y="messages",
-        color_discrete_sequence=["#CFCFCF"],
+        color_discrete_sequence=[DEFAULT_PLOT_SETTINGS.neutral_color],
         labels={
             "hour": "Hour of Day",
             "messages": "Number of Messages"
@@ -126,7 +124,7 @@ def plot_chat_activity_distribution(
     )
 
     fig.update_layout(
-        template="simple_white",
+        template=DEFAULT_PLOT_SETTINGS.plotly_template,
         bargap=0.35,
         showlegend=False,
         title={
@@ -140,6 +138,7 @@ def plot_chat_activity_distribution(
     )
 
     fig.update_xaxes(dtick=3)
+    fig.update_yaxes(showgrid=True, gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor, zeroline=False)
 
     if output:
         fig.write_image(output)

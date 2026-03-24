@@ -11,6 +11,7 @@ import pandas as pd
 import re
 
 from src.modules.feature_engineering import INCIDENT_BOW_TERMS
+from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
 
 
 def _build_incident_pattern() -> str:
@@ -89,8 +90,8 @@ def plot_incident_discussion_timeline(
         return
 
     fig, ax = plt.subplots(figsize=(13, 5))
-    total_color = "#b0b0b0"
-    incident_color = "#c62828"
+    total_color = DEFAULT_PLOT_SETTINGS.neutral_color
+    incident_color = DEFAULT_PLOT_SETTINGS.danger_color
     incident_text_color = "#8e0000"
 
     bars_total = ax.bar(
@@ -115,7 +116,7 @@ def plot_incident_discussion_timeline(
             zorder=2,
         )
     ax.set_ylabel("Messages / week")
-    ax.grid(axis="y", alpha=0.14, linestyle="-", linewidth=0.7)
+    ax.grid(axis="y", alpha=0.14, linestyle="-", linewidth=0.7, color=DEFAULT_PLOT_SETTINGS.gridcolor)
     ax.set_axisbelow(True)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -209,7 +210,7 @@ def plot_incident_discussion_timeline(
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(out_path, dpi=DEFAULT_PLOT_SETTINGS.dpi)
     plt.close(fig)
 
 
@@ -266,12 +267,12 @@ def plot_incident_activity_correlation(
     ax.set_title("Weekly Activity vs Incident Count")
     ax.set_xlabel("Total messages / week")
     ax.set_ylabel("Incident messages / week")
-    ax.grid(alpha=0.15)
+    ax.grid(alpha=0.15, color=DEFAULT_PLOT_SETTINGS.gridcolor)
     ax.set_axisbelow(True)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(out_path, dpi=DEFAULT_PLOT_SETTINGS.dpi)
     plt.close(fig)

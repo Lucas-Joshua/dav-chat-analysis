@@ -17,6 +17,7 @@ MODULES = [
     "src.visualizations.chat_activity",
     "src.visualizations.response_time_suite",
     "src.visualizations.incident_timeline",
+    "src.visualizations.author_clustering",
 ]
 
 

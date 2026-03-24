@@ -8,6 +8,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
 from src.visualizations.utils import ensure_parent_dir, get_user_col, top_user_order
 
 
@@ -87,36 +88,35 @@ def plot_negative_reaction_concentration(
         y=user_col,
         x="proportion",
         orientation="h",
-        color_discrete_sequence=["#DB4437"],
+        color_discrete_sequence=[DEFAULT_PLOT_SETTINGS.danger_color],
     )
 
     fig.update_layout(
-        title=dict(
-            text=(
-                "Negative-Reaction Emoji Usage Is Concentrated Among a Few Users"
-                f"<br><span style='font-size:14px;'>"
-                f"Highest user: {max_percent}% of their emoji usage"
-                "</span>"
+        DEFAULT_PLOT_SETTINGS.base_plotly_layout(
+            title=dict(
+                text=(
+                    "Negative-Reaction Emoji Usage Is Concentrated Among a Few Users"
+                    f"<br><span style='font-size:14px;'>"
+                    f"Highest user: {max_percent}% of their emoji usage"
+                    "</span>"
+                ),
+                x=0,
+                xanchor="left",
+                pad=dict(l=120)
             ),
-            x=0,
-            xanchor="left",
-            pad=dict(l=120)
-        ),
-        xaxis_title=dict(text="Proportion of Emoji Usage"),
-        yaxis_title=None,
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        margin=dict(l=120, r=40, t=130, b=60),
-        height=700,
-        font=dict(size=14),
-        showlegend=False
+            xaxis_title=dict(text="Proportion of Emoji Usage"),
+            yaxis_title=None,
+            margin=dict(l=120, r=40, t=130, b=60),
+            height=700,
+            showlegend=False
+        )
     )
 
     fig.update_xaxes(
         tickformat=".0%",
         range=[0, max_prop * 1.15],
         showgrid=True,
-        gridcolor="rgba(0,0,0,0.08)",
+        gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
         zeroline=False,
     )
 
@@ -163,7 +163,7 @@ def plot_negative_reaction_diagnostic(
         x=stats["ratio"],
         orientation="h",
         name="Negative Reaction Ratio",
-        marker=dict(color="#DB4437"),
+        marker=dict(color=DEFAULT_PLOT_SETTINGS.danger_color),
     ))
 
     # Black dots (total emoji)
@@ -172,33 +172,33 @@ def plot_negative_reaction_diagnostic(
         x=stats["total_emoji"],
         mode="markers",
         name="Total Emoji Used",
-        marker=dict(color="black", size=8),
+        marker=dict(color=DEFAULT_PLOT_SETTINGS.text_color, size=8),
         xaxis="x2"
     ))
 
     fig.update_layout(
-        title=dict(
-            text="Negative-Reaction Proportion vs Total Emoji Usage",
-            x=0,
-            xanchor="left"
-        ),
-        xaxis=dict(
-            title=dict(text="Proportion of Emoji Usage"),
-            tickformat=".0%",
-            range=[0, stats["ratio"].max() * 1.2]
-        ),
-        xaxis2=dict(
-            title=dict(text="Total Emoji Count"),
-            overlaying="x",
-            side="top"
-        ),
-        yaxis=dict(
-            autorange="reversed"
-        ),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        height=700,
-        margin=dict(l=120, r=40, t=120, b=60)
+        DEFAULT_PLOT_SETTINGS.base_plotly_layout(
+            title=dict(
+                text="Negative-Reaction Proportion vs Total Emoji Usage",
+                x=0,
+                xanchor="left"
+            ),
+            xaxis=dict(
+                title=dict(text="Proportion of Emoji Usage"),
+                tickformat=".0%",
+                range=[0, stats["ratio"].max() * 1.2]
+            ),
+            xaxis2=dict(
+                title=dict(text="Total Emoji Count"),
+                overlaying="x",
+                side="top"
+            ),
+            yaxis=dict(
+                autorange="reversed"
+            ),
+            height=700,
+            margin=dict(l=120, r=40, t=120, b=60)
+        )
     )
 
     fig.write_image(out_path, scale=2)
@@ -222,12 +222,12 @@ def plot_negative_reaction_scatter(
     )
 
     fig.update_layout(
-        title=dict(text="Negative-Reaction Usage Decreases as Emoji Volume Increases"),
-        xaxis_title=dict(text="Total Emoji Used"),
-        yaxis_title=dict(text="Proportion of Negative-Reaction Emoji"),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
-        height=600,
+        DEFAULT_PLOT_SETTINGS.base_plotly_layout(
+            title=dict(text="Negative-Reaction Usage Decreases as Emoji Volume Increases"),
+            xaxis_title=dict(text="Total Emoji Used"),
+            yaxis_title=dict(text="Proportion of Negative-Reaction Emoji"),
+            height=600,
+        )
     )
 
     fig.update_yaxes(tickformat=".0%")
