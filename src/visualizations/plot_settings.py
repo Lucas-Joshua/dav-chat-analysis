@@ -8,7 +8,17 @@ from typing import Any
 
 @dataclass(frozen=True)
 class PlotSettings:
-    """Shared baseline settings for Plotly and Matplotlib charts."""
+    """Shared baseline settings for Plotly and Matplotlib charts.
+
+    :ivar plot_bgcolor: Plot background color.
+    :vartype plot_bgcolor: str
+    :ivar paper_bgcolor: Figure background color.
+    :vartype paper_bgcolor: str
+    :ivar gridcolor: Gridline color.
+    :vartype gridcolor: str
+    :ivar font_size: Default font size.
+    :vartype font_size: int
+    """
 
     plot_bgcolor: str = "white"
     paper_bgcolor: str = "white"
@@ -33,7 +43,13 @@ class PlotSettings:
     })
 
     def base_plotly_layout(self, **overrides: Any) -> dict[str, Any]:
-        """Return a consistent base Plotly layout dictionary."""
+        """Return a consistent base Plotly layout dictionary.
+
+        :param overrides: Layout key-value overrides.
+        :type overrides: Any
+        :return: Base layout dictionary merged with overrides.
+        :rtype: dict[str, Any]
+        """
         layout: dict[str, Any] = {
             "font": {"size": self.font_size},
             "plot_bgcolor": self.plot_bgcolor,

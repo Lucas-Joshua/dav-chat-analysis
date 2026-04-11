@@ -7,7 +7,11 @@ from src.pipeline import run_pipeline
 
 
 def main():
-    """Run the data processing pipeline on the default raw dataset."""
+    """Run the data processing pipeline on the default raw dataset.
+
+    :return: None.
+    :rtype: None
+    """
     setup_logging()
     logger = logging.getLogger(__name__)
     logger.info("Starting DAV chat pipeline...")

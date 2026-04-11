@@ -11,7 +11,11 @@ RANDOM_SEED = 42
 
 
 def load_name_lists() -> tuple[list[str], list[str]]:
-    """Load first and last name lists from local assets."""
+    """Load first and last name lists from local assets.
+
+    :return: Tuple with available first names and last names.
+    :rtype: tuple[list[str], list[str]]
+    """
     first_names = pd.read_csv(config.FIRST_NAMES_FILE).iloc[:, 0].dropna().tolist()
     last_names = pd.read_csv(config.LAST_NAMES_FILE).iloc[:, 0].dropna().tolist()
 
@@ -22,7 +26,13 @@ def load_name_lists() -> tuple[list[str], list[str]]:
 
 
 def generate_fake_names(n: int) -> list[str]:
-    """Generate a list of unique fake full names."""
+    """Generate a list of unique fake full names.
+
+    :param n: Number of pseudonyms to generate.
+    :type n: int
+    :return: Generated pseudonymous full names.
+    :rtype: list[str]
+    """
     rng = Random(RANDOM_SEED)
 
     first_names, last_names = load_name_lists()
@@ -37,20 +47,36 @@ def generate_fake_names(n: int) -> list[str]:
 
 
 def load_user_mapping() -> pd.DataFrame | None:
-    """Load an existing user mapping file if available."""
+    """Load an existing user mapping file if available.
+
+    :return: Existing mapping dataframe, or ``None`` if no file exists.
+    :rtype: pd.DataFrame | None
+    """
     if not config.USER_MAPPING_FILE.exists():
         return None
     return pd.read_csv(config.USER_MAPPING_FILE)
 
 
 def save_user_mapping(mapping_df: pd.DataFrame) -> None:
-    """Save the user mapping dataframe to disk."""
+    """Save the user mapping dataframe to disk.
+
+    :param mapping_df: Mapping dataframe with real and pseudonymous names.
+    :type mapping_df: pd.DataFrame
+    :return: None.
+    :rtype: None
+    """
     mapping_df.to_csv(config.USER_MAPPING_FILE, index=False)
     logger.info(f"User mapping saved to {config.USER_MAPPING_FILE}")
 
 
 def create_mapping(users: list[str]) -> pd.DataFrame:
-    """Create a mapping dataframe from real users to fake names."""
+    """Create a mapping dataframe from real users to fake names.
+
+    :param users: Real user names that require pseudonyms.
+    :type users: list[str]
+    :return: Mapping dataframe with ``real_name`` and ``pseudo_name`` columns.
+    :rtype: pd.DataFrame
+    """
     fake_names = generate_fake_names(len(users))
 
     return pd.DataFrame(
@@ -62,7 +88,13 @@ def create_mapping(users: list[str]) -> pd.DataFrame:
 
 
 def apply_anonymization(df: pd.DataFrame) -> pd.DataFrame:
-    """Replace real sender names with pseudonyms."""
+    """Replace real sender names with pseudonyms.
+
+    :param df: Chat dataframe containing a ``sender`` column.
+    :type df: pd.DataFrame
+    :return: Copy of the dataframe with anonymized sender names.
+    :rtype: pd.DataFrame
+    """
 
     if "sender" not in df.columns:
         raise ValueError("Column 'sender' not found")

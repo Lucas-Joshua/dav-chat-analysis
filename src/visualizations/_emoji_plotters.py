@@ -16,7 +16,15 @@ def plot_overall_emoji_distribution(
         df: pd.DataFrame,
         out_path: str | Path = "img/overall_emoji_distribution.png",
 ):
-    """Plot overall emoji group distribution across the full dataset."""
+    """Plot overall emoji-group distribution across the full dataset.
+
+    :param df: Input dataframe containing ``emoji_group``.
+    :type df: pd.DataFrame
+    :param out_path: Output path for the rendered image.
+    :type out_path: str | Path
+    :return: None.
+    :rtype: None
+    """
     out_path = ensure_parent_dir(out_path)
 
     if "emoji_group" not in df.columns:
@@ -24,18 +32,15 @@ def plot_overall_emoji_distribution(
 
     df = df[df["emoji_group"].notna()].copy()
 
-    # Count per group
     counts = (
         df.groupby("emoji_group")
         .size()
         .reset_index(name="count")
     )
 
-    # Convert to proportions
     total = counts["count"].sum()
     counts["proportion"] = counts["count"] / total
 
-    # Sort descending
     counts = counts.sort_values("proportion", ascending=False)
 
     fig = px.bar(
@@ -85,7 +90,19 @@ def plot_emoji_heatmap_png(
     top_n_emojis: int = 10,
     user_col: Optional[str] = None,
 ):
-    """Plot a user-by-emoji heatmap for the most-used emojis."""
+    """Plot a user-by-emoji heatmap for the most-used emojis.
+
+    :param df: Input dataframe containing ``emoji_list``.
+    :type df: pd.DataFrame
+    :param out_path: Output path for the rendered image.
+    :type out_path: str | Path
+    :param top_n_emojis: Number of top emojis to include.
+    :type top_n_emojis: int
+    :param user_col: Optional user column override.
+    :type user_col: Optional[str]
+    :return: None.
+    :rtype: None
+    """
     out_path = ensure_parent_dir(out_path)
     user_col = get_user_col(df, preferred=user_col)
 
@@ -140,7 +157,17 @@ def plot_emoji_type_per_user(
     out_path: str | Path = "img/emoji_group_distribution.png",
     top_users: int = 10,
 ):
-    """Plot per-user emoji group proportions for top contributors."""
+    """Plot per-user emoji-group proportions for top contributors.
+
+    :param df: Input dataframe containing ``emoji_group``.
+    :type df: pd.DataFrame
+    :param out_path: Output path for the rendered image.
+    :type out_path: str | Path
+    :param top_users: Number of users to include.
+    :type top_users: int
+    :return: None.
+    :rtype: None
+    """
     out_path = ensure_parent_dir(out_path)
     user_col = get_user_col(df)
 
@@ -201,11 +228,14 @@ def plot_emoji_usage_by_hour(
     df: pd.DataFrame,
     output: Optional[Path] = None
 ):
-    """
-    Visualizes the probability that a message contains emojis across hours of the day.
+    """Visualize probability of emoji usage across hours of the day.
 
-    Insight:
-    Emoji usage increases during social hours after skydiving activities.
+    :param df: Input dataframe containing ``hour`` and ``has_emoji``.
+    :type df: pd.DataFrame
+    :param output: Optional output image path.
+    :type output: Optional[Path]
+    :return: Plotly figure with hourly emoji probability.
+    :rtype: plotly.graph_objs._figure.Figure
     """
 
     df = df.copy()

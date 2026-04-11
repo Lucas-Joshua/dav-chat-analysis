@@ -13,7 +13,15 @@ from src.visualizations.utils import ensure_parent_dir, get_user_col, top_user_o
 
 
 def _emoji_group_counts(df: pd.DataFrame, user_col: str) -> pd.DataFrame:
-    """Build per-user per-group emoji counts."""
+    """Build per-user per-group emoji counts.
+
+    :param df: Input dataframe containing ``emoji_group``.
+    :type df: pd.DataFrame
+    :param user_col: Name of the user column.
+    :type user_col: str
+    :return: Count dataframe grouped by user and emoji group.
+    :rtype: pd.DataFrame
+    """
     working = df[df["emoji_group"].notna()].copy()
     return (
         working.groupby([user_col, "emoji_group"])
@@ -23,7 +31,15 @@ def _emoji_group_counts(df: pd.DataFrame, user_col: str) -> pd.DataFrame:
 
 
 def _negative_stats(df: pd.DataFrame, user_col: str) -> pd.DataFrame:
-    """Compute total and negative emoji counts plus ratio per user."""
+    """Compute total and negative emoji counts plus ratio per user.
+
+    :param df: Input dataframe containing emoji features.
+    :type df: pd.DataFrame
+    :param user_col: Name of the user column.
+    :type user_col: str
+    :return: Per-user totals, negative counts, and ratios.
+    :rtype: pd.DataFrame
+    """
     exploded = df[df["emoji_group"].notna()].explode("emoji_list").dropna(subset=["emoji_list"])
     total_emoji = exploded.groupby(user_col).size().rename("total_emoji")
     negative_emoji = (
@@ -42,10 +58,16 @@ def plot_negative_reaction_concentration(
     out_path: str | Path = "img/negative_reaction_concentration.png",
     top_users: int = 10,
 ) -> None:
-    """
-    Visualize the proportion of negative-reaction emojis per user.
+    """Visualize the proportion of negative-reaction emojis per user.
 
-    Users are sorted descending by negative-reaction usage.
+    :param df: Input dataframe containing ``emoji_group``.
+    :type df: pd.DataFrame
+    :param out_path: Output path for the rendered image.
+    :type out_path: str | Path
+    :param top_users: Number of users to include.
+    :type top_users: int
+    :return: None.
+    :rtype: None
     """
 
     out_path = ensure_parent_dir(out_path)
@@ -58,17 +80,13 @@ def plot_negative_reaction_concentration(
     selected_users = top_user_order(counts, user_col, top_users)
     counts = counts[counts[user_col].isin(selected_users)]
 
-    # Convert to proportions
     group_totals = counts.groupby(user_col)["count"].transform("sum")
     counts["proportion"] = counts["count"] / group_totals
 
-    # Keep only negative_reaction group
     negative = counts[counts["emoji_group"] == "negative_reflective"].copy()
 
-    # Sort descending
     negative = negative.sort_values("proportion", ascending=False)
 
-    # Anonymize users
     negative[user_col] = [
         f"User {chr(65+i)}" for i in range(len(negative))
     ]
@@ -82,7 +100,6 @@ def plot_negative_reaction_concentration(
     max_prop = negative["proportion"].max()
     max_percent = round(max_prop * 100, 1)
 
-    # Plot
     fig = px.bar(
         negative,
         y=user_col,
@@ -134,30 +151,30 @@ def plot_negative_reaction_diagnostic(
     out_path: str | Path = "img/negative_reaction_diagnostic.png",
     top_users: int = 10,
 ) -> None:
-    """
-    Plot diagnostic metrics for negative reactions by user.
+    """Plot diagnostic metrics for negative reactions by user.
 
-    - Red bars: proportion of negative-reaction emojis
-    - Black dots: total emoji usage per user
+    :param df: Input dataframe containing emoji features.
+    :type df: pd.DataFrame
+    :param out_path: Output path for the rendered image.
+    :type out_path: str | Path
+    :param top_users: Number of users to include.
+    :type top_users: int
+    :return: None.
+    :rtype: None
     """
 
     out_path = ensure_parent_dir(out_path)
     user_col = get_user_col(df)
     stats = _negative_stats(df, user_col)
 
-    # Filter top users by total emoji usage
     stats = stats.sort_values("total_emoji", ascending=False).head(top_users)
 
-    # Sort by ratio descending
     stats = stats.sort_values("ratio", ascending=False)
 
-    # Anonymize
     stats["anon"] = [f"User {chr(65+i)}" for i in range(len(stats))]
 
-    # Build figure
     fig = go.Figure()
 
-    # Red bars (ratio)
     fig.add_trace(go.Bar(
         y=stats["anon"],
         x=stats["ratio"],
@@ -166,7 +183,6 @@ def plot_negative_reaction_diagnostic(
         marker=dict(color=DEFAULT_PLOT_SETTINGS.danger_color),
     ))
 
-    # Black dots (total emoji)
     fig.add_trace(go.Scatter(
         y=stats["anon"],
         x=stats["total_emoji"],
@@ -208,7 +224,15 @@ def plot_negative_reaction_scatter(
     df: pd.DataFrame,
     out_path: str | Path = "img/negative_reaction_scatter.png",
 ) -> None:
-    """Scatter total emoji usage versus negative reaction ratio."""
+    """Scatter total emoji usage versus negative-reaction ratio.
+
+    :param df: Input dataframe containing emoji features.
+    :type df: pd.DataFrame
+    :param out_path: Output path for the rendered image.
+    :type out_path: str | Path
+    :return: None.
+    :rtype: None
+    """
     out_path = ensure_parent_dir(out_path)
     user_col = get_user_col(df)
     stats = _negative_stats(df, user_col)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from src.visualizations._incident_plotters import (
     plot_incident_activity_correlation,
@@ -12,7 +13,15 @@ from src.visualizations.utils import resolve_output_path
 
 
 def incident_discussion_timeline(df, out_dir: str | Path | None = None) -> None:
-    """Generate incident/safety discussion timeline chart."""
+    """Generate the incident and safety discussion timeline chart.
+
+    :param df: Processed chat dataframe.
+    :type df: Any
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     plot_incident_discussion_timeline(
         df,
         out_path=resolve_output_path(out_dir, "incident_discussion_timeline.png"),
@@ -20,7 +29,15 @@ def incident_discussion_timeline(df, out_dir: str | Path | None = None) -> None:
 
 
 def incident_activity_correlation(df, out_dir: str | Path | None = None) -> None:
-    """Generate weekly activity vs incident correlation chart."""
+    """Generate the weekly activity versus incident correlation chart.
+
+    :param df: Processed chat dataframe.
+    :type df: Any
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     plot_incident_activity_correlation(
         df,
         out_path=resolve_output_path(out_dir, "incident_activity_correlation.png"),

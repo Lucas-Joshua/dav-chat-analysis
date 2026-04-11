@@ -12,7 +12,13 @@ PLOT_NAME = "response_time_suite"
 
 
 def _compute_response_minutes(df: pd.DataFrame) -> pd.DataFrame:
-    """Compute response minutes for valid sender switches."""
+    """Compute response-delay metrics for valid sender switches.
+
+    :param df: Input dataframe with at least ``datetime`` and ``sender``.
+    :type df: pd.DataFrame
+    :return: Dataframe with response-time and derived temporal features.
+    :rtype: pd.DataFrame
+    """
     df = df.copy()
 
     if "datetime" not in df.columns:
@@ -60,7 +66,15 @@ def _compute_response_minutes(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def generate(df: pd.DataFrame, out_dir: str | Path | None = None) -> None:
-    """Generate the full response time visualization suite."""
+    """Generate the full response-time visualization suite.
+
+    :param df: Processed chat dataframe.
+    :type df: pd.DataFrame
+    :param out_dir: Optional output directory root.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     import matplotlib.pyplot as plt
 
     df = _compute_response_minutes(df)
@@ -88,7 +102,6 @@ def generate(df: pd.DataFrame, out_dir: str | Path | None = None) -> None:
         .reindex(index=day_order, columns=hours)
     )
 
-    # 1) Daily response pattern (small multiples)
     fig, axes = plt.subplots(2, 4, figsize=(16, 8), sharey=True, constrained_layout=True)
     axes = axes.flatten()
 
@@ -123,7 +136,6 @@ def generate(df: pd.DataFrame, out_dir: str | Path | None = None) -> None:
     fig.savefig(output_dir / "daily_response_pattern_small_multiples.png", dpi=DEFAULT_PLOT_SETTINGS.dpi)
     plt.close(fig)
 
-    # 2) Fast-response + activity view by hour
     fig, ax = plt.subplots(figsize=(12, 6))
     hourly_summary = (
         df.groupby("hour")["response_minutes"]
@@ -133,7 +145,6 @@ def generate(df: pd.DataFrame, out_dir: str | Path | None = None) -> None:
     fast_threshold = hourly_summary["median_response"].quantile(0.15)
     fast_mask = hourly_summary["median_response"] <= fast_threshold
 
-    # Scale marker size by response count (bigger = more active hour).
     size_scale = hourly_summary["response_count"].fillna(0) * 0.8
     marker_sizes = size_scale.clip(lower=30)
 
@@ -176,7 +187,6 @@ def generate(df: pd.DataFrame, out_dir: str | Path | None = None) -> None:
     fig.savefig(output_dir / "response_time_spike_hours_line.png", dpi=DEFAULT_PLOT_SETTINGS.dpi)
     plt.close(fig)
 
-    # 3) Response time distribution
     fig, ax = plt.subplots(figsize=(10, 6))
     ax.hist(df["response_minutes"], bins=30, color=DEFAULT_PLOT_SETTINGS.accent_color, edgecolor="white")
     ax.set_title("Response Time Distribution")

@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import logging
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +18,17 @@ MODULES = [
     "src.visualizations.response_time_suite",
     "src.visualizations.incident_timeline",
     "src.visualizations.author_clustering",
+    "src.visualizations.time_series_modeling",
+    "src.visualizations.poisson_modeling",
 ]
 
 
 def _load_registry() -> dict[str, VisualizationFn]:
-    """Load and merge REGISTRY dictionaries from visualization modules."""
+    """Load and merge ``REGISTRY`` dictionaries from visualization modules.
+
+    :return: Mapping from visualization names to callables.
+    :rtype: dict[str, VisualizationFn]
+    """
     registry: dict[str, VisualizationFn] = {}
 
     for module_path in MODULES:
@@ -38,7 +44,17 @@ def run_selected(
     selections: dict[str, bool],
     out_dir: str | Path | None = None,
 ) -> None:
-    """Run selected visualizations using the module registry."""
+    """Run selected visualizations using the module registry.
+
+    :param df: Processed dataframe used by visualization functions.
+    :type df: Any
+    :param selections: Mapping from visualization name to enabled flag.
+    :type selections: dict[str, bool]
+    :param out_dir: Optional output directory for generated figures.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     registry = _load_registry()
 
     for name in selections:

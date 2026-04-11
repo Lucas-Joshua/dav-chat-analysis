@@ -80,19 +80,36 @@ INCIDENT_BOW_TERMS = [
 
 
 def _build_incident_pattern() -> str:
+    """Build a regex pattern that matches configured incident bag-of-words terms.
+
+    :return: Regex pattern string for incident keyword matching.
+    :rtype: str
+    """
     escaped = [re.escape(t).replace(r"\ ", r"\s+") for t in INCIDENT_BOW_TERMS]
     return r"\b(?:{})\b".format("|".join(escaped))
 
 
 def extract_emojis(text: str) -> list[str]:
-    """Extract a list of emojis from text."""
+    """Extract a list of emojis from text.
+
+    :param text: Input message text.
+    :type text: str
+    :return: Extracted emoji characters.
+    :rtype: list[str]
+    """
     if not isinstance(text, str):
         return []
     return [e["emoji"] for e in emoji.emoji_list(text)]
 
 
 def add_emoji_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add emoji list, count, and presence features to the dataset."""
+    """Add emoji list, count, and presence features to the dataset.
+
+    :param df: Input dataframe with a message column.
+    :type df: pd.DataFrame
+    :return: Dataframe with ``emoji_list``, ``emoji_count``, and ``has_emoji``.
+    :rtype: pd.DataFrame
+    """
     df = df.copy()
 
     msg_col = "message" if "message" in df.columns else "original_message"
@@ -108,7 +125,13 @@ def add_emoji_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _determine_emoji_category(emojis: list[str]) -> tuple[str | None, str | None]:
-    """Map the first recognized emoji to a type and reduced group."""
+    """Map the first recognized emoji to a type and reduced group.
+
+    :param emojis: Emoji list extracted from a message.
+    :type emojis: list[str]
+    :return: Tuple of ``(emoji_type, emoji_group)`` or ``(None, None)``.
+    :rtype: tuple[str | None, str | None]
+    """
 
     if not emojis:
         return None, None
@@ -124,7 +147,13 @@ def _determine_emoji_category(emojis: list[str]) -> tuple[str | None, str | None
 
 
 def add_emoji_category(df: pd.DataFrame) -> pd.DataFrame:
-    """Add emoji type and reduced group columns based on emoji list."""
+    """Add emoji type and reduced group columns based on emoji list.
+
+    :param df: Input dataframe containing ``emoji_list``.
+    :type df: pd.DataFrame
+    :return: Dataframe with ``emoji_type`` and ``emoji_group`` columns.
+    :rtype: pd.DataFrame
+    """
 
     df = df.copy()
 
@@ -140,7 +169,13 @@ def add_emoji_category(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add hour, day name, and date-only columns from datetime."""
+    """Add hour, day name, and date-only columns from datetime.
+
+    :param df: Input dataframe containing ``datetime``.
+    :type df: pd.DataFrame
+    :return: Dataframe with time-derived columns.
+    :rtype: pd.DataFrame
+    """
 
     df = df.copy()
 
@@ -163,7 +198,13 @@ def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_message_length(df: pd.DataFrame) -> pd.DataFrame:
-    """Add message length in characters."""
+    """Add message length in characters.
+
+    :param df: Input dataframe containing ``message``.
+    :type df: pd.DataFrame
+    :return: Dataframe with ``message_length``.
+    :rtype: pd.DataFrame
+    """
 
     df = df.copy()
 
@@ -173,7 +214,13 @@ def add_message_length(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_has_emoji_feature(df: pd.DataFrame) -> pd.DataFrame:
-    """Add boolean flag indicating emoji presence."""
+    """Add boolean flag indicating emoji presence.
+
+    :param df: Input dataframe containing ``emoji_count``.
+    :type df: pd.DataFrame
+    :return: Dataframe with refreshed ``has_emoji`` flag.
+    :rtype: pd.DataFrame
+    """
     df = df.copy()
 
     if "emoji_count" not in df.columns:
@@ -185,7 +232,13 @@ def add_has_emoji_feature(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_incident_bow_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add bag-of-words incident features (no ML model)."""
+    """Add bag-of-words incident features without a machine-learning model.
+
+    :param df: Input dataframe containing ``message``.
+    :type df: pd.DataFrame
+    :return: Dataframe with incident hit, score, and flag columns.
+    :rtype: pd.DataFrame
+    """
     df = df.copy()
     if "message" not in df.columns:
         raise KeyError("message column not found.")
@@ -194,7 +247,6 @@ def add_incident_bow_features(df: pd.DataFrame) -> pd.DataFrame:
     text = df["message"].fillna("").astype(str)
 
     df["incident_bow_hits"] = text.str.count(pattern, flags=re.IGNORECASE).fillna(0).astype(int)
-    # Simple normalized score in [0, 1] from hit count.
     df["incident_bow_score"] = (df["incident_bow_hits"] / (df["incident_bow_hits"] + 1)).astype(float)
     df["is_incident_message"] = (df["incident_bow_hits"] >= 1).astype(int)
     return df

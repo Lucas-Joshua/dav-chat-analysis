@@ -22,5 +22,62 @@ dependencies = [
     "kaleido>=0.2.1",
     "seaborn>=0.13.2",
     "scikit-learn>=1.8.0",
+    "scipy>=1.13.0",
     "umap-learn>=0.5.11",
 ]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.9.0",
+    "mypy>=1.13.0",
+]
+
+# ── Ruff: linting + formatting ──────────────────────────────────────────────
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "N",   # pep8-naming
+    "ANN", # flake8-annotations (type-hints)
+    "SIM", # flake8-simplify
+    "RUF", # ruff-specific rules
+]
+ignore = [
+    "ANN101",  # missing type annotation for self
+    "ANN102",  # missing type annotation for cls
+    "ANN204",  # missing return type annotation for __init__
+    "B008",    # do not perform function calls in default arguments
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["src"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ── Mypy: static type checking ───────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.11"
+strict = false
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["plotly.*", "umap.*", "sklearn.*", "seaborn.*", "kaleido.*", "scipy.*"]
+ignore_missing_imports = true

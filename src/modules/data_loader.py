@@ -10,10 +10,14 @@ logger = logging.getLogger(__name__)
 
 
 def load_raw_chat(path: Path, encoding: str | None = None) -> pd.DataFrame:
-    """
-    Load raw WhatsApp export lines into a dataframe with one column: ``raw``.
+    """Load raw WhatsApp export lines into a dataframe with a ``raw`` column.
 
-    Keeps it simple on purpose; parsing happens in data_cleaning.clean_data().
+    :param path: Path to the raw chat export file.
+    :type path: Path
+    :param encoding: Optional file encoding override.
+    :type encoding: str | None
+    :return: Dataframe containing one row per raw line.
+    :rtype: pd.DataFrame
     """
     if encoding is None:
         encoding = getattr(config, "ENCODING", "utf-8")
@@ -32,7 +36,13 @@ def load_raw_chat(path: Path, encoding: str | None = None) -> pd.DataFrame:
 
 
 def load_clean_csv(path: Path) -> pd.DataFrame:
-    """Load a cleaned CSV dataset and parse datetime columns."""
+    """Load a cleaned CSV dataset and parse datetime columns.
+
+    :param path: Path to the cleaned CSV file.
+    :type path: Path
+    :return: Loaded dataframe with parsed ``datetime`` where available.
+    :rtype: pd.DataFrame
+    """
     if not path.exists():
         raise FileNotFoundError(f"CSV file not found: {path}")
 
@@ -47,7 +57,13 @@ def load_clean_csv(path: Path) -> pd.DataFrame:
 
 
 def load_clean_parquet(path: Path) -> pd.DataFrame:
-    """Load a cleaned Parquet dataset."""
+    """Load a cleaned Parquet dataset.
+
+    :param path: Path to the cleaned parquet file.
+    :type path: Path
+    :return: Loaded dataframe.
+    :rtype: pd.DataFrame
+    """
     if not path.exists():
         raise FileNotFoundError(f"Parquet file not found: {path}")
 

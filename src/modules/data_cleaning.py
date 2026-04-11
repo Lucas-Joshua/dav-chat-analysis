@@ -3,6 +3,7 @@
 import pandas as pd
 import logging
 import re
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -20,17 +21,35 @@ DELETED_MESSAGE_PATTERN = re.compile(
 
 
 def _strip_invisible(text: str) -> str:
-    """Remove zero-width and control characters from text."""
+    """Remove zero-width and control characters from text.
+
+    :param text: Input text.
+    :type text: str
+    :return: Cleaned text without configured invisible characters.
+    :rtype: str
+    """
     return text.replace("\u200e", "").replace("\u202f", "").strip()
 
 
 def normalize_sender(sender: str) -> str:
-    """Normalize sender names by trimming and standardizing whitespace."""
+    """Normalize sender names by trimming surrounding whitespace.
+
+    :param sender: Raw sender value.
+    :type sender: str
+    :return: Normalized sender name.
+    :rtype: str
+    """
     return sender.strip()
 
 
 def extract_emojis(text: str) -> list[str]:
-    """Extract emojis from text using the emoji library."""
+    """Extract emojis from text using a Unicode range pattern.
+
+    :param text: Input message text.
+    :type text: str
+    :return: Emoji matches found in the text.
+    :rtype: list[str]
+    """
     emoji_pattern = re.compile(
         "["
         "\U0001F600-\U0001F64F"
@@ -46,17 +65,76 @@ def extract_emojis(text: str) -> list[str]:
     return emoji_pattern.findall(text)
 
 
-def clean_data(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Parse raw WhatsApp export lines into structured messages.
+def _normalize_text_columns(
+    df: pd.DataFrame,
+    columns: list[str],
+    normalizer: Callable[[str], str],
+) -> pd.DataFrame:
+    """Normalize multiple text columns using the same transformation function.
 
-    Produces:
-      - datetime
-      - sender
-      - original_message
-      - message
-      - emoji_list
-      - contains_emoji
+    :param df: Input dataframe.
+    :type df: pd.DataFrame
+    :param columns: Column names to normalize.
+    :type columns: list[str]
+    :param normalizer: Function applied to each string value.
+    :type normalizer: Callable[[str], str]
+    :return: Dataframe copy with normalized text columns.
+    :rtype: pd.DataFrame
+    """
+    working = df.copy()
+    for column in columns:
+        if column not in working.columns:
+            continue
+        working[column] = working[column].astype(str).map(normalizer).str.strip()
+    return working
+
+
+def _parse_datetime_columns(
+    df: pd.DataFrame,
+    columns: list[str],
+    datetime_format: str,
+) -> pd.DataFrame:
+    """Parse multiple datetime columns with one consistent parser configuration.
+
+    :param df: Input dataframe.
+    :type df: pd.DataFrame
+    :param columns: Datetime column names to parse.
+    :type columns: list[str]
+    :param datetime_format: Explicit datetime parsing format.
+    :type datetime_format: str
+    :return: Dataframe copy with parsed datetime columns.
+    :rtype: pd.DataFrame
+    """
+    working = df.copy()
+    for column in columns:
+        if column not in working.columns:
+            continue
+        working[column] = pd.to_datetime(
+            working[column],
+            format=datetime_format,
+            errors="coerce",
+        )
+    return working
+
+
+def _build_boolean_feature(series: pd.Series) -> pd.Series:
+    """Build a boolean feature from list-like values based on non-empty length.
+
+    :param series: Input series containing list-like values.
+    :type series: pd.Series
+    :return: Boolean series where ``True`` means a non-empty list.
+    :rtype: pd.Series
+    """
+    return series.apply(lambda value: len(value) > 0)
+
+
+def clean_data(df: pd.DataFrame) -> pd.DataFrame:
+    """Parse raw WhatsApp export lines into structured messages.
+
+    :param df: Raw dataframe containing a ``raw`` text column.
+    :type df: pd.DataFrame
+    :return: Cleaned dataframe with parsed metadata and emoji features.
+    :rtype: pd.DataFrame
     """
 
     logger.info("Starting data cleaning process")
@@ -107,31 +185,30 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
             "No messages parsed. Check MESSAGE_PATTERN against WhatsApp export format."
         )
 
-    df_clean["datetime"] = pd.to_datetime(
-        df_clean["datetime"],
-        format="%d/%m/%Y %H:%M:%S",
-        errors="coerce",
+    df_clean = _parse_datetime_columns(
+        df_clean,
+        columns=["datetime"],
+        datetime_format="%d/%m/%Y %H:%M:%S",
     )
-
-    df_clean["sender"] = df_clean["sender"].astype(str).map(normalize_sender)
-
-    df_clean["original_message"] = (
-        df_clean["original_message"]
-        .astype(str)
-        .map(_strip_invisible)
-        .str.strip()
+    df_clean = _normalize_text_columns(
+        df_clean,
+        columns=["sender"],
+        normalizer=normalize_sender,
+    )
+    df_clean = _normalize_text_columns(
+        df_clean,
+        columns=["original_message"],
+        normalizer=_strip_invisible,
     )
 
     df_clean["message"] = df_clean["original_message"]
 
-    # Remove non-content rows that should not be analyzed as real messages.
     df_clean = df_clean.loc[
         ~df_clean["message"].fillna("").astype(str).str.match(DELETED_MESSAGE_PATTERN)
     ].copy()
 
     df_clean["emoji_list"] = df_clean["message"].apply(extract_emojis)
-
-    df_clean["contains_emoji"] = df_clean["emoji_list"].apply(lambda x: len(x) > 0)
+    df_clean["contains_emoji"] = _build_boolean_feature(df_clean["emoji_list"])
 
     df_clean = df_clean.drop_duplicates(
         subset=["datetime", "sender", "original_message"]

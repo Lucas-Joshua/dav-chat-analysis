@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from src.visualizations._emoji_plotters import (
     plot_emoji_heatmap_png,
@@ -14,7 +15,15 @@ from src.visualizations.utils import resolve_output_path
 
 
 def overall_emoji_distribution(df, out_dir: str | Path | None = None) -> None:
-    """Generate the overall emoji distribution bar chart."""
+    """Generate the overall emoji distribution bar chart.
+
+    :param df: Processed chat dataframe.
+    :type df: Any
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     plot_overall_emoji_distribution(
         df,
         out_path=resolve_output_path(out_dir, "overall_emoji_distribution.png"),
@@ -22,7 +31,15 @@ def overall_emoji_distribution(df, out_dir: str | Path | None = None) -> None:
 
 
 def emoji_heatmap(df, out_dir: str | Path | None = None) -> None:
-    """Generate the emoji usage heatmap for top emojis per user."""
+    """Generate the emoji usage heatmap for top emojis per user.
+
+    :param df: Processed chat dataframe.
+    :type df: Any
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     plot_emoji_heatmap_png(
         df,
         out_path=resolve_output_path(out_dir, "emoji_heatmap.png"),
@@ -30,7 +47,15 @@ def emoji_heatmap(df, out_dir: str | Path | None = None) -> None:
 
 
 def emoji_type_per_user(df, out_dir: str | Path | None = None) -> None:
-    """Generate the emoji group distribution per user."""
+    """Generate the emoji group distribution per user.
+
+    :param df: Processed chat dataframe.
+    :type df: Any
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     plot_emoji_type_per_user(
         df,
         out_path=resolve_output_path(out_dir, "emoji_group_distribution.png"),
@@ -38,7 +63,15 @@ def emoji_type_per_user(df, out_dir: str | Path | None = None) -> None:
 
 
 def emoji_usage_by_hour(df, out_dir: str | Path | None = None) -> None:
-    """Generate the probability of emoji usage by hour."""
+    """Generate the probability of emoji usage by hour.
+
+    :param df: Processed chat dataframe.
+    :type df: Any
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     plot_emoji_usage_by_hour(
         df,
         output=Path(resolve_output_path(out_dir, "plot_emoji_usage_by_hour.png")),

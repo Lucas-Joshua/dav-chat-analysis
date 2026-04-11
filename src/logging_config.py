@@ -13,7 +13,15 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 def setup_logging(level=logging.INFO, log_to_file=True):
-    """Configure console and optional file logging for the pipeline."""
+    """Configure root logging for console output and optional log files.
+
+    :param level: Logging level to apply to the root logger.
+    :type level: int
+    :param log_to_file: Whether to also write logs to a rotating file.
+    :type log_to_file: bool
+    :return: None.
+    :rtype: None
+    """
     root_logger = logging.getLogger()
 
     if root_logger.handlers:
@@ -21,7 +29,6 @@ def setup_logging(level=logging.INFO, log_to_file=True):
 
     root_logger.setLevel(level)
 
-    # Console
     console_handler = colorlog.StreamHandler()
     console_formatter = colorlog.ColoredFormatter(
         "%(log_color)s" + LOG_FORMAT,
@@ -37,7 +44,6 @@ def setup_logging(level=logging.INFO, log_to_file=True):
     console_handler.setFormatter(console_formatter)
     root_logger.addHandler(console_handler)
 
-    # File logging
     if log_to_file:
         config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -58,7 +64,6 @@ def setup_logging(level=logging.INFO, log_to_file=True):
 
     logging.captureWarnings(True)
 
-    # Reduce noisy third-party logs so pipeline progress stays readable.
     for noisy_logger in [
         "matplotlib",
         "matplotlib.font_manager",

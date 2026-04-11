@@ -50,7 +50,11 @@ _CLUSTER_AGE_HINTS = {
 # ---------------------------------------------------------------------------
 
 def _load_name_mapping() -> dict[str, str]:
-    """Return {pseudo_name: real_name} from user_mapping.csv, if it exists."""
+    """Return ``{pseudo_name: real_name}`` mapping from ``user_mapping.csv``.
+
+    :return: Mapping from pseudonyms to real names, or empty mapping.
+    :rtype: dict[str, str]
+    """
     mapping: dict[str, str] = {}
     if not _MAPPING_PATH.exists():
         return mapping
@@ -65,6 +69,15 @@ def _load_name_mapping() -> dict[str, str]:
 
 
 def _hex_to_rgba(hex_color: str, alpha: float) -> str:
+    """Convert a hex color code to an ``rgba(...)`` CSS string.
+
+    :param hex_color: Hex color string in ``#RRGGBB`` format.
+    :type hex_color: str
+    :param alpha: Alpha channel value in range ``[0, 1]``.
+    :type alpha: float
+    :return: CSS rgba color string.
+    :rtype: str
+    """
     r = int(hex_color[1:3], 16)
     g = int(hex_color[3:5], 16)
     b = int(hex_color[5:7], 16)
@@ -77,7 +90,19 @@ def _confidence_ellipse(
     n_std: float = 1.5,
     n_points: int = 80,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Return (x_ell, y_ell) for an n_std-sigma confidence ellipse (numpy only)."""
+    """Build confidence-ellipse coordinates from x/y samples.
+
+    :param x: X coordinates.
+    :type x: np.ndarray
+    :param y: Y coordinates.
+    :type y: np.ndarray
+    :param n_std: Ellipse radius in standard deviations.
+    :type n_std: float
+    :param n_points: Number of points used to draw the ellipse.
+    :type n_points: int
+    :return: Tuple of x and y arrays for ellipse drawing.
+    :rtype: tuple[np.ndarray, np.ndarray]
+    """
     if len(x) < 2:
         t = np.linspace(0, 2 * np.pi, n_points)
         return x[0] + 0.5 * np.cos(t), y[0] + 0.5 * np.sin(t)
@@ -112,22 +137,18 @@ def plot_author_clustering(
     method: Literal["PCA", "tSNE", "UMAP"] = "tSNE",
     **kwargs,
 ) -> None:
-    """Render a 2-D scatter coloured by K-means writing-style cluster.
+    """Render a 2-D scatter colored by K-means writing-style cluster.
 
-    Each point is a 500-char chunk of one author's messages.  Authors are
-    coloured by their majority K-means cluster, and confidence ellipses
-    (Gestalt: Common Region) enclose every author's chunks.  Real names are
-    shown directly on the plot (Gestalt: Proximity) so the viewer can
-    immediately relate writing-style groups to known people.
-
-    Parameters
-    ----------
-    df:
-        Processed chat DataFrame with stylometry data in ``df.attrs``.
-    out_path:
-        Destination path for the exported PNG.
-    method:
-        Which pre-computed embedding to use: ``"PCA"``, ``"tSNE"``, or ``"UMAP"``.
+    :param df: Processed chat dataframe with stylometry data in ``df.attrs``.
+    :type df: pd.DataFrame
+    :param out_path: Destination path for the exported image.
+    :type out_path: str | Path
+    :param method: Embedding key to use (``PCA``, ``tSNE``, or ``UMAP``).
+    :type method: Literal["PCA", "tSNE", "UMAP"]
+    :param kwargs: Reserved keyword arguments for future extension.
+    :type kwargs: Any
+    :return: None.
+    :rtype: None
     """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -148,18 +169,15 @@ def plot_author_clustering(
             "Ensure _add_stylometric_embedding ran successfully in the pipeline."
         )
 
-    # Use only first 2 dimensions.
     xy = np.asarray(embedding)[:, :2]
     label_arr = np.asarray(labels)
 
     plot_df = pd.DataFrame({"x": xy[:, 0], "y": xy[:, 1], "author": label_arr})
 
-    # Only authors with ≥ 3 chunks get an ellipse.
     counts = plot_df["author"].value_counts()
     valid_authors: list[str] = counts[counts >= 3].index.tolist()
     plot_df = plot_df[plot_df["author"].isin(valid_authors)].reset_index(drop=True)
 
-    # Assign cluster colour to each chunk row.
     if author_cluster:
         plot_df["cluster"] = plot_df["author"].map(
             lambda a: author_cluster.get(a, 0)
@@ -167,7 +185,6 @@ def plot_author_clustering(
     else:
         plot_df["cluster"] = 0
 
-    # Real-name lookup.
     name_map = _load_name_mapping()
     plot_df["display_name"] = plot_df["author"].map(
         lambda a: name_map.get(a, a)
@@ -176,7 +193,6 @@ def plot_author_clustering(
     n_authors = len(valid_authors)
     logger.info("Plotting %d authors (%d chunks), %d clusters", n_authors, len(plot_df), n_clusters)
 
-    # ── Build figure (storyboard: one panel per cluster) ─────────────────
     cols = 2 if n_clusters <= 4 else 3
     rows = int(math.ceil(n_clusters / cols))
 
@@ -206,7 +222,6 @@ def plot_author_clustering(
         hex_col = _CLUSTER_COLORS[cluster_id % len(_CLUSTER_COLORS)]
         subset = plot_df[plot_df["cluster"] == cluster_id]
 
-        # Context layer: all points in soft gray.
         fig.add_trace(
             go.Scatter(
                 x=plot_df["x"],
@@ -220,7 +235,6 @@ def plot_author_clustering(
             col=c,
         )
 
-        # Cluster zone.
         pts = subset[["x", "y"]].to_numpy()
         if len(pts) >= 3:
             ex, ey = _confidence_ellipse(pts[:, 0], pts[:, 1], n_std=1.8)
@@ -239,7 +253,6 @@ def plot_author_clustering(
                 col=c,
             )
 
-        # Cluster points.
         fig.add_trace(
             go.Scatter(
                 x=subset["x"],
@@ -259,7 +272,6 @@ def plot_author_clustering(
             col=c,
         )
 
-        # Cluster centroid.
         if not subset.empty:
             fig.add_trace(
                 go.Scatter(
@@ -298,7 +310,6 @@ def plot_author_clustering(
             col=c,
         )
 
-    # ── Layout ────────────────────────────────────────────────────────────
     chunk_size = df.attrs.get("stylometry_chunk_size", 500)
     fig.update_layout(
         DEFAULT_PLOT_SETTINGS.base_plotly_layout(
@@ -328,7 +339,15 @@ def plot_author_reduction_comparison(
     df: pd.DataFrame,
     out_path: str | Path = "img/author_clustering_comparison.png",
 ) -> None:
-    """Render side-by-side PCA, t-SNE, and UMAP comparison with shared axes."""
+    """Render side-by-side PCA, t-SNE, and UMAP comparison with shared axes.
+
+    :param df: Processed chat dataframe with stylometry data in ``df.attrs``.
+    :type df: pd.DataFrame
+    :param out_path: Destination path for the exported image.
+    :type out_path: str | Path
+    :return: None.
+    :rtype: None
+    """
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -429,3 +448,160 @@ def plot_author_reduction_comparison(
     fig.savefig(out_path, dpi=220)
     plt.close(fig)
     logger.info("Author reduction comparison plot saved to %s", out_path)
+
+
+# ---------------------------------------------------------------------------
+# UMAP parameter comparison (Les 6)
+# ---------------------------------------------------------------------------
+
+#: Two UMAP configurations to compare side by side.
+#: Config A: tight clusters (low n_neighbors, low min_dist)
+#: Config B: broad structure (higher n_neighbors, higher min_dist)
+_UMAP_CONFIGS: list[dict] = [
+    {"label": "UMAP A\nn_neighbors=5, min_dist=0.1", "n_neighbors": 5,  "min_dist": 0.1},
+    {"label": "UMAP B\nn_neighbors=15, min_dist=0.5", "n_neighbors": 15, "min_dist": 0.5},
+]
+
+#: Human-readable interpretation of each K-means cluster.
+_CLUSTER_INTERPRETATION: dict[int, str] = {
+    0: "C1 · jong-midden mix",
+    1: "C2 · jongere mix",
+    2: "C3 · oudere groep",
+    3: "C4 · gemengde mix",
+}
+
+
+def plot_umap_parameter_comparison(
+    df: pd.DataFrame,
+    out_path: str | Path = "img/umap_parameter_comparison.png",
+) -> None:
+    """Compare two UMAP configurations side by side with cluster labels.
+
+    Both panels share the same cluster colour-coding from the t-SNE K-means
+    assignment.  A short interpretation label is printed at each cluster
+    centroid so the plot is self-explanatory without a separate legend.
+
+    Two configurations are compared:
+    - Config A: n_neighbors=5,  min_dist=0.1  (tight, local structure)
+    - Config B: n_neighbors=15, min_dist=0.5  (broad, global structure)
+
+    :param df: Processed chat dataframe with ``df.attrs["stylometry_texts"]``
+               and ``df.attrs["stylometry_labels"]`` populated.
+    :type df: pd.DataFrame
+    :param out_path: Destination path for the exported image.
+    :type out_path: str | Path
+    :return: None.
+    :rtype: None
+    :raises RuntimeError: If stylometry texts or labels are missing from attrs.
+    :raises ImportError: If the ``umap-learn`` package is not installed.
+    """
+    from src.modules.author_stylometry import compute_stylometric_embedding  # local import
+
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    texts: list[str] | None = df.attrs.get("stylometry_texts")
+    labels: list[str] | None = df.attrs.get("stylometry_labels")
+    author_cluster: dict[str, int] | None = df.attrs.get("stylometry_author_cluster")
+    n_clusters: int = df.attrs.get("stylometry_n_clusters", 4)
+
+    if texts is None or labels is None:
+        raise RuntimeError(
+            "stylometry_texts / stylometry_labels not found in df.attrs. "
+            "Ensure _add_stylometric_embedding ran successfully."
+        )
+
+    label_arr = np.asarray(labels)
+    name_map = _load_name_mapping()
+
+    # Filter to authors with enough chunks
+    counts = pd.Series(labels).value_counts()
+    valid_authors = counts[counts >= 3].index.tolist()
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 7))
+
+    for ax, cfg in zip(axes, _UMAP_CONFIGS):
+        # Re-compute UMAP with this parameter set
+        logger.info(
+            "Computing UMAP for comparison: n_neighbors=%d, min_dist=%.1f",
+            cfg["n_neighbors"],
+            cfg["min_dist"],
+        )
+        emb = compute_stylometric_embedding(
+            texts,
+            method="UMAP",
+            n_components=2,
+            n_neighbors=cfg["n_neighbors"],
+            min_dist=cfg["min_dist"],
+        )
+
+        xy = np.asarray(emb)[:, :2]
+        plot_df = pd.DataFrame({"x": xy[:, 0], "y": xy[:, 1], "author": label_arr})
+        plot_df = plot_df[plot_df["author"].isin(valid_authors)].reset_index(drop=True)
+
+        if author_cluster:
+            plot_df["cluster"] = plot_df["author"].map(lambda a: author_cluster.get(a, 0))
+        else:
+            plot_df["cluster"] = 0
+
+        plot_df["display_name"] = plot_df["author"].map(lambda a: name_map.get(a, a))
+
+        # Background scatter (all points, grey)
+        ax.scatter(
+            plot_df["x"], plot_df["y"],
+            c="lightgray", alpha=0.15, s=18, linewidths=0, zorder=1,
+        )
+
+        # Coloured points per cluster
+        for cluster_id in range(n_clusters):
+            csub = plot_df[plot_df["cluster"] == cluster_id]
+            if csub.empty:
+                continue
+            color = _CLUSTER_COLORS[cluster_id % len(_CLUSTER_COLORS)]
+            ax.scatter(
+                csub["x"], csub["y"],
+                c=color, alpha=0.85, s=22, linewidths=0, zorder=2,
+            )
+            # Centroid cross marker
+            cx, cy = float(csub["x"].mean()), float(csub["y"].mean())
+            ax.scatter(
+                [cx], [cy],
+                c=color, marker="X", s=160, edgecolors="white",
+                linewidths=1.2, zorder=4,
+            )
+            # Interpretation label at centroid
+            label_text = _CLUSTER_INTERPRETATION.get(cluster_id, f"C{cluster_id + 1}")
+            ax.annotate(
+                label_text,
+                xy=(cx, cy),
+                xytext=(0, 10),
+                textcoords="offset points",
+                ha="center",
+                fontsize=8,
+                color=color,
+                fontweight="bold",
+                zorder=5,
+            )
+
+        ax.set_title(cfg["label"], fontsize=10, pad=6)
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_xlabel("UMAP dimensie 1", fontsize=9)
+        ax.set_ylabel("UMAP dimensie 2", fontsize=9)
+        for spine in ax.spines.values():
+            spine.set_alpha(0.25)
+
+    fig.suptitle(
+        "UMAP-parametersvergelijking · Schrijfstijl-clusters",
+        y=0.96, fontsize=13,
+    )
+    plt.subplots_adjust(wspace=0.12, bottom=0.14, top=0.90, left=0.04, right=0.98)
+    caption = (
+        "Beide panelen gebruiken dezelfde K-means clusters (op basis van t-SNE). "
+        "Config A (links) benadrukt lokale structuur; Config B (rechts) toont globale patronen. "
+        "Kleurlabels bij elk clustercentrum geven de leeftijdsinterpretatie."
+    )
+    fig.text(0.5, 0.02, caption, ha="center", va="bottom", fontsize=9, wrap=True)
+    fig.savefig(out_path, dpi=220)
+    plt.close(fig)
+    logger.info("UMAP parameter comparison saved to %s", out_path)

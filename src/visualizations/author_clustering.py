@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
 from src.visualizations._author_clustering_plotter import (
     plot_author_clustering,
     plot_author_reduction_comparison,
+    plot_umap_parameter_comparison,
     _load_name_mapping,
 )
 from src.visualizations.utils import resolve_output_path
@@ -32,7 +34,15 @@ _CLUSTER_STORY = {
 
 
 def author_clustering(df, out_dir: str | Path | None = None) -> None:
-    """Generate the author stylometric clustering scatter plot (tSNE)."""
+    """Generate the author stylometric clustering scatter plot (t-SNE).
+
+    :param df: Processed chat dataframe with stylometry attributes.
+    :type df: Any
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     plot_author_clustering(
         df,
         out_path=resolve_output_path(out_dir, "author_clustering.png"),
@@ -42,7 +52,15 @@ def author_clustering(df, out_dir: str | Path | None = None) -> None:
 
 
 def author_clustering_pca(df, out_dir: str | Path | None = None) -> None:
-    """Generate the author stylometric clustering scatter plot (PCA)."""
+    """Generate the author stylometric clustering scatter plot (PCA).
+
+    :param df: Processed chat dataframe with stylometry attributes.
+    :type df: Any
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     plot_author_clustering(
         df,
         out_path=resolve_output_path(out_dir, "author_clustering_pca.png"),
@@ -51,7 +69,15 @@ def author_clustering_pca(df, out_dir: str | Path | None = None) -> None:
 
 
 def author_clustering_umap(df, out_dir: str | Path | None = None) -> None:
-    """Generate the author stylometric clustering scatter plot (UMAP)."""
+    """Generate the author stylometric clustering scatter plot (UMAP).
+
+    :param df: Processed chat dataframe with stylometry attributes.
+    :type df: Any
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     plot_author_clustering(
         df,
         out_path=resolve_output_path(out_dir, "author_clustering_umap.png"),
@@ -60,15 +86,51 @@ def author_clustering_umap(df, out_dir: str | Path | None = None) -> None:
 
 
 def author_clustering_comparison(df, out_dir: str | Path | None = None) -> None:
-    """Generate compact comparison plot for t-SNE, UMAP, and PCA."""
+    """Generate a compact comparison plot for t-SNE, UMAP, and PCA.
+
+    :param df: Processed chat dataframe with stylometry attributes.
+    :type df: Any
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     plot_author_reduction_comparison(
         df,
         out_path=resolve_output_path(out_dir, "author_clustering_comparison.png"),
     )
 
 
+def umap_parameter_comparison(df, out_dir: str | Path | None = None) -> None:
+    """Generate a side-by-side UMAP parameter comparison with cluster labels.
+
+    Compares two UMAP configurations (n_neighbors=5/min_dist=0.1 vs
+    n_neighbors=15/min_dist=0.5) so the effect of hyperparameters on the
+    embedding is immediately visible.
+
+    :param df: Processed chat dataframe with stylometry attributes.
+    :type df: Any
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
+    plot_umap_parameter_comparison(
+        df,
+        out_path=resolve_output_path(out_dir, "umap_parameter_comparison.png"),
+    )
+
+
 def _export_cluster_table(df, out_dir) -> None:
-    """Write a CSV with real name, pseudo name, cluster, and message count."""
+    """Write a CSV with real name, pseudo name, cluster, and message count.
+
+    :param df: Processed chat dataframe with clustering attributes.
+    :type df: Any
+    :param out_dir: Optional output directory.
+    :type out_dir: Any
+    :return: None.
+    :rtype: None
+    """
     author_cluster: dict | None = df.attrs.get("stylometry_author_cluster")
     n_clusters: int = df.attrs.get("stylometry_n_clusters", 4)
     if not author_cluster:
@@ -98,7 +160,15 @@ def _export_cluster_table(df, out_dir) -> None:
 
 
 def _export_cluster_story(cluster_df: pd.DataFrame, out_dir: str | Path | None = None) -> None:
-    """Write a compact narrative guide for interpreting cluster results."""
+    """Write a compact narrative guide for interpreting cluster results.
+
+    :param cluster_df: Cluster summary dataframe.
+    :type cluster_df: pd.DataFrame
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     out_path = Path(resolve_output_path(out_dir, "author_cluster_story.md"))
 
     lines: list[str] = []
@@ -139,7 +209,15 @@ def _export_cluster_story(cluster_df: pd.DataFrame, out_dir: str | Path | None =
 
 
 def _export_cluster_delivery(cluster_df: pd.DataFrame, out_dir: str | Path | None = None) -> None:
-    """Write a presentation-ready narrative with conclusions and talk track."""
+    """Write a presentation-ready narrative with conclusions and talk track.
+
+    :param cluster_df: Cluster summary dataframe.
+    :type cluster_df: pd.DataFrame
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     out_path = Path(resolve_output_path(out_dir, "author_cluster_delivery.md"))
 
     cluster_stats = (
@@ -213,4 +291,5 @@ REGISTRY = {
     "author_clustering_pca": author_clustering_pca,
     "author_clustering_umap": author_clustering_umap,
     "author_clustering_comparison": author_clustering_comparison,
+    "umap_parameter_comparison": umap_parameter_comparison,
 }

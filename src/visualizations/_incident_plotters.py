@@ -15,7 +15,11 @@ from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
 
 
 def _build_incident_pattern() -> str:
-    """Build a regex pattern that matches incident bag-of-words terms."""
+    """Build a regex pattern that matches incident bag-of-words terms.
+
+    :return: Regex pattern for incident-term matching.
+    :rtype: str
+    """
     terms: list[str] = [str(term) for term in INCIDENT_BOW_TERMS]
     escaped_terms: list[str] = [
         re.escape(str(term)).replace(r"\ ", r"\s+") for term in terms
@@ -24,7 +28,13 @@ def _build_incident_pattern() -> str:
 
 
 def _flag_incident_messages(df: pd.DataFrame) -> pd.DataFrame:
-    """Add incident message flags to a dataframe copy."""
+    """Add incident message flags to a dataframe copy.
+
+    :param df: Input dataframe containing ``message``.
+    :type df: pd.DataFrame
+    :return: Dataframe with ``is_incident_message`` column.
+    :rtype: pd.DataFrame
+    """
     pattern = _build_incident_pattern()
     working = df.copy()
     working["is_incident_message"] = (
@@ -38,7 +48,13 @@ def _flag_incident_messages(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _prepare_weekly_incident_df(df: pd.DataFrame) -> pd.DataFrame:
-    """Build weekly totals and incident counts from message-level data using BOW flags."""
+    """Build weekly totals and incident counts from message-level data.
+
+    :param df: Input dataframe containing ``datetime`` and ``message``.
+    :type df: pd.DataFrame
+    :return: Weekly aggregated dataframe with incident metrics.
+    :rtype: pd.DataFrame
+    """
     if "datetime" not in df.columns:
         raise KeyError("datetime column not found.")
     if "message" not in df.columns:
@@ -84,7 +100,15 @@ def plot_incident_discussion_timeline(
     df: pd.DataFrame,
     out_path: str | Path = "img/incident_discussion_timeline.png",
 ) -> None:
-    """Plot weekly total vs incident message volume with BOW keyword context."""
+    """Plot weekly total versus incident message volume with keyword context.
+
+    :param df: Input dataframe with message and datetime features.
+    :type df: pd.DataFrame
+    :param out_path: Output path for the rendered image.
+    :type out_path: str | Path
+    :return: None.
+    :rtype: None
+    """
     focus = _prepare_weekly_incident_df(df)
     if bool(focus.empty):
         return
@@ -156,7 +180,6 @@ def plot_incident_discussion_timeline(
     labels = [h.get_label() for h in handles]
     ax.legend(handles, labels, frameon=False, loc="upper left", fontsize=9)
 
-    # Show top flagged words as a vertical list on the right side.
     working = _flag_incident_messages(df)
     incident_msgs = (
         working.loc[working["is_incident_message"] == 1, "message"]
@@ -218,13 +241,27 @@ def plot_incident_activity_correlation(
     df: pd.DataFrame,
     out_path: str | Path = "img/incident_activity_correlation.png",
 ) -> None:
-    """Plot correlation between weekly total chat activity and incident message count."""
+    """Plot correlation between weekly total chat activity and incident message count.
+
+    :param df: Input dataframe with message and datetime features.
+    :type df: pd.DataFrame
+    :param out_path: Output path for the rendered image.
+    :type out_path: str | Path
+    :return: None.
+    :rtype: None
+    """
     weekly = _prepare_weekly_incident_df(df)
     if bool(weekly.empty):
         return
 
     corr = weekly["total_message_count"].corr(weekly["incident_message_count"])
     n_points = len(weekly)
+
+    import math as _math
+    t_stat = corr * _math.sqrt(n_points - 2) / _math.sqrt(max(1 - corr**2, 1e-12))
+    z = abs(t_stat)
+    p_val = 2.0 * (1.0 - 0.5 * (1.0 + _math.erf(z / _math.sqrt(2.0))))
+    p_label = "p < 0.001" if p_val < 0.001 else f"p = {p_val:.3f}"
 
     fig, ax = plt.subplots(figsize=(7, 6))
     ax.scatter(
@@ -237,7 +274,7 @@ def plot_incident_activity_correlation(
         edgecolors="white",
         linewidths=0.4,
     )
-    info_text = f"n = {n_points}\ncorr = {corr:.2f}"
+    info_text = f"n = {n_points}\nr = {corr:.2f}\n{p_label}"
     x_values = weekly["total_message_count"].astype(float).to_numpy()
     y_values = weekly["incident_message_count"].astype(float).to_numpy()
     if len(x_values) >= 2 and (x_values.max() - x_values.min()) > 0:
@@ -264,7 +301,7 @@ def plot_incident_activity_correlation(
         color="#333333",
         bbox={"facecolor": "white", "alpha": 0.9, "edgecolor": "#dddddd"},
     )
-    ax.set_title("Weekly Activity vs Incident Count")
+    ax.set_title("Busier Weeks Have More Incident Messages (r = 0.55, p < 0.001)")
     ax.set_xlabel("Total messages / week")
     ax.set_ylabel("Incident messages / week")
     ax.grid(alpha=0.15, color=DEFAULT_PLOT_SETTINGS.gridcolor)

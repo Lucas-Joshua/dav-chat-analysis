@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from src.visualizations._activity_plotters import (
     plot_chat_activity_by_hour,
@@ -12,7 +13,15 @@ from src.visualizations.utils import resolve_output_path
 
 
 def chat_activity_by_hour(df, out_dir: str | Path | None = None) -> None:
-    """Generate the chat activity by hour line chart."""
+    """Generate the chat activity by-hour line chart.
+
+    :param df: Processed chat dataframe.
+    :type df: Any
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     plot_chat_activity_by_hour(
         df,
         out_path=resolve_output_path(out_dir, "chat_activity_by_hour.png"),
@@ -20,7 +29,15 @@ def chat_activity_by_hour(df, out_dir: str | Path | None = None) -> None:
 
 
 def chat_activity_distribution(df, out_dir: str | Path | None = None) -> None:
-    """Generate the chat activity distribution bar chart."""
+    """Generate the chat activity distribution bar chart.
+
+    :param df: Processed chat dataframe.
+    :type df: Any
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
     plot_chat_activity_distribution(
         df,
         output=Path(resolve_output_path(out_dir, "plot_chat_activity_distribution.png")),
