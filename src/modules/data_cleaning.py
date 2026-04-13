@@ -7,11 +7,28 @@ from typing import Callable
 
 logger = logging.getLogger(__name__)
 
-MESSAGE_PATTERN = re.compile(
-    r"^\[(\d{2}/\d{2}/\d{4}), (\d{2}:\d{2}:\d{2})\] ([^:]+): (.*)$"
+DATE_PATTERN = r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}"
+TIME_PATTERN = r"\d{1,2}:\d{2}(?::\d{2})?(?:\s?[APMapm]{2})?"
+
+MESSAGE_PATTERNS = (
+    re.compile(
+        rf"^\[(?P<date>{DATE_PATTERN}), (?P<time>{TIME_PATTERN})\] (?P<sender>[^:]+): (?P<message>.*)$"
+    ),
+    re.compile(
+        rf"^(?P<date>{DATE_PATTERN}), (?P<time>{TIME_PATTERN}) - (?P<sender>[^:]+): (?P<message>.*)$"
+    ),
+    re.compile(
+        rf"^(?P<date>{DATE_PATTERN}) (?P<time>{TIME_PATTERN}) - (?P<sender>[^:]+): (?P<message>.*)$"
+    ),
+    re.compile(
+        rf"^(?P<date>{DATE_PATTERN}) - (?P<sender>[^:]+): (?P<message>.*)$"
+    ),
 )
-SYSTEM_EVENT_PATTERN = re.compile(
-    r"^\[(\d{2}/\d{2}/\d{4}), (\d{2}:\d{2}:\d{2})\] (.+)$"
+SYSTEM_EVENT_PATTERNS = (
+    re.compile(rf"^\[(?P<date>{DATE_PATTERN}), (?P<time>{TIME_PATTERN})\] (?P<message>.+)$"),
+    re.compile(rf"^(?P<date>{DATE_PATTERN}), (?P<time>{TIME_PATTERN}) - (?P<message>.+)$"),
+    re.compile(rf"^(?P<date>{DATE_PATTERN}) (?P<time>{TIME_PATTERN}) - (?P<message>.+)$"),
+    re.compile(rf"^(?P<date>{DATE_PATTERN}) - (?P<message>.+)$"),
 )
 DELETED_MESSAGE_PATTERN = re.compile(
     r"^(?:This message was deleted\.?|Dit bericht is verwijderd\.?|"
@@ -89,32 +106,40 @@ def _normalize_text_columns(
     return working
 
 
-def _parse_datetime_columns(
-    df: pd.DataFrame,
-    columns: list[str],
-    datetime_format: str,
-) -> pd.DataFrame:
-    """Parse multiple datetime columns with one consistent parser configuration.
+def _match_line(patterns: tuple[re.Pattern[str], ...], text: str) -> re.Match[str] | None:
+    """Try multiple regex patterns and return the first match."""
+    for pattern in patterns:
+        match = pattern.match(text)
+        if match:
+            return match
+    return None
 
-    :param df: Input dataframe.
-    :type df: pd.DataFrame
-    :param columns: Datetime column names to parse.
-    :type columns: list[str]
-    :param datetime_format: Explicit datetime parsing format.
-    :type datetime_format: str
-    :return: Dataframe copy with parsed datetime columns.
-    :rtype: pd.DataFrame
+
+def _parse_chat_datetime(series: pd.Series) -> pd.Series:
+    """Parse WhatsApp timestamps from multiple export formats.
+
+    Supports common exports from Android, iPhone, Mac, and Windows by allowing:
+    - bracketed or unbracketed prefixes
+    - slash or hyphen date separators
+    - 24-hour or 12-hour times
+    - optional seconds
     """
-    working = df.copy()
-    for column in columns:
-        if column not in working.columns:
-            continue
-        working[column] = pd.to_datetime(
-            working[column],
-            format=datetime_format,
+    parsed = pd.to_datetime(series, errors="coerce", dayfirst=True)
+    missing = parsed.isna()
+    if missing.any():
+        parsed.loc[missing] = pd.to_datetime(
+            series.loc[missing],
             errors="coerce",
+            dayfirst=False,
         )
-    return working
+    return parsed
+
+
+def _combine_date_and_time(date_text: str, time_text: str | None) -> str:
+    """Build one datetime string, defaulting missing times to midnight."""
+    if time_text is None or not str(time_text).strip():
+        return f"{date_text} 00:00:00"
+    return f"{date_text} {time_text}"
 
 
 def _build_boolean_feature(series: pd.Series) -> pd.Series:
@@ -150,22 +175,25 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
         line = "" if line is None else str(line).rstrip("\n")
         stripped = _strip_invisible(line)
 
-        match = MESSAGE_PATTERN.match(stripped)
+        match = _match_line(MESSAGE_PATTERNS, stripped)
 
         if match:
 
             if current is not None:
                 messages.append(current)
 
-            date, time, sender, msg = match.groups()
+            date = match.group("date")
+            time = match.groupdict().get("time")
+            sender = match.group("sender")
+            msg = match.group("message")
 
             current = {
-                "datetime": f"{date} {time}",
+                "datetime": _combine_date_and_time(date, time),
                 "sender": normalize_sender(sender),
                 "original_message": (msg or "").strip(),
             }
 
-        elif SYSTEM_EVENT_PATTERN.match(stripped):
+        elif _match_line(SYSTEM_EVENT_PATTERNS, stripped):
             if current is not None:
                 messages.append(current)
                 current = None
@@ -185,11 +213,7 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
             "No messages parsed. Check MESSAGE_PATTERN against WhatsApp export format."
         )
 
-    df_clean = _parse_datetime_columns(
-        df_clean,
-        columns=["datetime"],
-        datetime_format="%d/%m/%Y %H:%M:%S",
-    )
+    df_clean["datetime"] = _parse_chat_datetime(df_clean["datetime"])
     df_clean = _normalize_text_columns(
         df_clean,
         columns=["sender"],

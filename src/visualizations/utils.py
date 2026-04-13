@@ -13,9 +13,6 @@ VISUALIZATION_LESSON_MAP: dict[str, str] = {
     # Les 2: category/comparison
     "overall_emoji_distribution": "les2",
     "emoji_heatmap": "les2",
-    "negative_reaction_concentration": "les2",
-    "negative_reaction_diagnostic": "les2",
-    "negative_reaction_scatter": "les2",
     # Les 3: time
     "chat_activity_by_hour": "les3",
     "emoji_usage_by_hour": "les3",
@@ -30,11 +27,6 @@ VISUALIZATION_LESSON_MAP: dict[str, str] = {
     # Les 6: dimensionality reduction / modelling
     "incident_context_projection": "les6",
     "incident_context_comparison": "les6",
-    "author_clustering": "les6",
-    "author_clustering_pca": "les6",
-    "author_clustering_umap": "les6",
-    "author_clustering_comparison": "les6",
-    "umap_parameter_comparison": "les6",
 }
 
 

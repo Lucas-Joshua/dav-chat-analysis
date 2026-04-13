@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from src.visualizations._incident_plotters import (
     plot_incident_activity_correlation,

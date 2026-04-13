@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from src.visualizations._activity_plotters import (
     plot_chat_activity_by_hour,

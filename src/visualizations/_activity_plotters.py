@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -99,83 +98,6 @@ def plot_chat_activity_by_hour(
     fig.update_layout(height=480)
 
     fig.write_image(out_path, scale=2)
-
-
-def plot_chat_activity_distribution(
-    df: pd.DataFrame,
-    output: Optional[Path] = None,
-) -> go.Figure:
-    """Visualize the discrete hourly message distribution over all observations.
-
-    This chart intentionally stays in count space (no scaled density overlay)
-    so the visual read matches the exact grouped values.
-
-    :param df: Input dataframe with an ``hour`` column.
-    :type df: pd.DataFrame
-    :param output: Optional output image path.
-    :type output: Optional[Path]
-    :return: Plotly figure with hourly distribution bars.
-    :rtype: go.Figure
-    """
-    df = df.copy()
-
-    hourly_counts = hourly_message_counts(df, hour_col="hour").rename(columns={"count": "messages"})
-
-    accent = DEFAULT_PLOT_SETTINGS.danger_color
-
-    threshold = float(hourly_counts["messages"].quantile(0.95))
-    is_extreme = hourly_counts["messages"] >= threshold
-    n_extreme = int(is_extreme.sum())
-    bar_colors = focus_colors(is_extreme)
-
-    # --- Figure ---
-    fig = go.Figure()
-
-    # Bars
-    fig.add_trace(
-        go.Bar(
-            x=hourly_counts["hour"],
-            y=hourly_counts["messages"],
-            name="Berichten per uur",
-            marker_color=bar_colors,
-            showlegend=False,
-        )
-    )
-    max_hour = int(hourly_counts.loc[hourly_counts["messages"].idxmax(), "hour"])
-    max_messages = int(hourly_counts["messages"].max())
-    fig.add_annotation(
-        x=max_hour,
-        y=max_messages,
-        text=f"Uitschieter: {max_hour}:00",
-        showarrow=True,
-        arrowhead=2,
-        ax=40,
-        ay=-35,
-        font=dict(size=10, color=accent),
-    )
-
-    fig.update_layout(
-        template=DEFAULT_PLOT_SETTINGS.plotly_template,
-        bargap=0.35,
-        legend=dict(orientation="h", y=1.08, x=0.5, xanchor="center"),
-    )
-    set_plotly_title(
-        fig,
-        title="Distributie van chatactiviteit per uur",
-        subtitle=f"Rood markeert extreme uren (top 5%, n={n_extreme})",
-    )
-    style_plotly_xy_axes(
-        fig,
-        x_title="Uur van de dag",
-        y_title="Aantal berichten",
-        x_dtick=3,
-    )
-
-    if output:
-        fig.write_image(str(output))
-
-    return fig
-
 
 def plot_chat_activity_weekday_weekend(
     df: pd.DataFrame,
@@ -288,7 +210,6 @@ def plot_chat_activity_weekday_weekend(
         )
 
     # --- Annotation: point upward to spread in weekend upper cloud ---
-    q75_wd = float(np.percentile(weekday, 75))
     q75_we = float(np.percentile(weekend, 75))
     ax.annotate(
         "Weekend: bredere spreiding\nin de middelste massa",

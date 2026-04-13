@@ -8,6 +8,14 @@ from src import config
 
 logger = logging.getLogger(__name__)
 
+FALLBACK_ENCODINGS: tuple[str, ...] = (
+    "utf-8",
+    "utf-8-sig",
+    "utf-16",
+    "cp1252",
+    "latin-1",
+)
+
 
 def load_raw_chat(path: Path, encoding: str | None = None) -> pd.DataFrame:
     """Load raw WhatsApp export lines into a dataframe with a ``raw`` column.
@@ -19,55 +27,32 @@ def load_raw_chat(path: Path, encoding: str | None = None) -> pd.DataFrame:
     :return: Dataframe containing one row per raw line.
     :rtype: pd.DataFrame
     """
-    if encoding is None:
-        encoding = getattr(config, "ENCODING", "utf-8")
-
     if not path.exists():
         raise FileNotFoundError(f"File not found: {path}")
 
     logger.info(f"Loading raw chat: {path}")
 
-    with open(path, "r", encoding=encoding, errors="replace") as f:
-        lines = [line.rstrip("\n") for line in f]
+    encodings_to_try = (
+        (encoding,) if encoding is not None else (getattr(config, "ENCODING", "utf-8"), *FALLBACK_ENCODINGS)
+    )
+
+    last_error: UnicodeError | None = None
+    lines: list[str] | None = None
+    used_encoding = None
+    for candidate in dict.fromkeys(encodings_to_try):
+        try:
+            with open(path, "r", encoding=candidate) as f:
+                lines = [line.rstrip("\n") for line in f]
+            used_encoding = candidate
+            break
+        except UnicodeError as exc:
+            last_error = exc
+
+    if lines is None:
+        if last_error is not None:
+            raise last_error
+        raise UnicodeError("Unable to decode raw chat file with supported encodings")
 
     df = pd.DataFrame({"raw": lines})
-    logger.info(f"Raw chat loaded ({len(df)} rows)")
-    return df
-
-
-def load_clean_csv(path: Path) -> pd.DataFrame:
-    """Load a cleaned CSV dataset and parse datetime columns.
-
-    :param path: Path to the cleaned CSV file.
-    :type path: Path
-    :return: Loaded dataframe with parsed ``datetime`` where available.
-    :rtype: pd.DataFrame
-    """
-    if not path.exists():
-        raise FileNotFoundError(f"CSV file not found: {path}")
-
-    logger.info(f"Loading CSV: {path}")
-    df = pd.read_csv(path)
-
-    if "datetime" in df.columns:
-        df["datetime"] = pd.to_datetime(df["datetime"], errors="coerce")
-
-    logger.info(f"CSV loaded ({len(df)} rows)")
-    return df
-
-
-def load_clean_parquet(path: Path) -> pd.DataFrame:
-    """Load a cleaned Parquet dataset.
-
-    :param path: Path to the cleaned parquet file.
-    :type path: Path
-    :return: Loaded dataframe.
-    :rtype: pd.DataFrame
-    """
-    if not path.exists():
-        raise FileNotFoundError(f"Parquet file not found: {path}")
-
-    logger.info(f"Loading Parquet: {path}")
-    df = pd.read_parquet(path)
-    logger.info(f"Parquet loaded ({len(df)} rows)")
+    logger.info("Raw chat loaded (%d rows, encoding=%s)", len(df), used_encoding)
     return df

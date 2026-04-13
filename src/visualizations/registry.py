@@ -13,11 +13,9 @@ VisualizationFn = Callable[..., None]
 
 MODULES = [
     "src.visualizations.emoji",
-    "src.visualizations.negative_reactions",
     "src.visualizations.chat_activity",
     "src.visualizations.incident_timeline",
     "src.visualizations.incident_context_modeling",
-    "src.visualizations.author_clustering",
     "src.visualizations.time_series_modeling",
     "src.visualizations.poisson_modeling",
 ]

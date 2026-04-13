@@ -83,12 +83,8 @@ def plot_time_series_activity(
     rolling = ts.rolling(window=8, center=True, min_periods=1).mean()
     residuals = ts - rolling
 
-    # --- Poisson λ (overall rate) ---
-    lam_overall = float(ts[ts > 0].mean())
-
     # --- Detect incident windows ---
     incident_windows = _get_incident_windows(df)
-    incident_ts = ts.reindex(incident_windows).dropna()
 
     # λ per incident window vs baseline
     incident_mask = ts.index.isin(incident_windows)

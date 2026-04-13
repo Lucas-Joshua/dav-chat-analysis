@@ -1,208 +1,197 @@
 # DAV Chat Analysis
 
-## Studentinformatie
-
-Naam: Lucas Joshua\
+Naam: Lucas Joshua  
 Studentnummer: 1905781
 
-## Projectbeschrijving
+Python-project voor het vak Data Analysis & Visualisation. De repository bevat een pipeline die een WhatsApp-export inleest, opschoont, anonimiseert, features afleidt en visualisaties wegschrijft. Daarnaast is er een Streamlit-dashboard om de verwerkte data interactief te verkennen.
 
-Dit project is ontwikkeld voor het vak **Data Analysis & Visualisation (DAV)**.
+## Wat Dit Project Doet
 
-De applicatie analyseert een WhatsApp-chatexport (`.txt`) en doorloopt een volledige data-pipeline: van ruwe tekst tot geaggregeerde statistieken, feature engineering, anonimisering en interactieve visualisaties. Als verdieping bevat het project een **schrijfstijlanalyse (stylometrie)** op basis van karaktertrigrammen, waarbij K-means clustering en dimensiereductie (PCA, t-SNE, UMAP) worden ingezet om auteurs te groeperen op schrijfstijl — zonder te kijken naar wat iemand schrijft, alleen *hoe*.
+- Leest een WhatsApp-chat uit `data/raw/raw_data.txt`
+- Parseert berichten, afzenders en timestamps
+- Anonimiseert afzenders en bewaart de mapping in `data/processed/user_mapping.csv`
+- Verrijkt de data met emoji-, tijd- en incidentfeatures
+- Slaat de verwerkte dataset op als CSV en Parquet
+- Genereert de geselecteerde visualisaties in `img/`
+- Biedt een dashboard via Streamlit
 
----
+De parser is bewust generiek opgezet voor meerdere veelvoorkomende WhatsApp-exportformaten. Exports van Android, iPhone, Mac en Windows gebruiken niet altijd exact dezelfde datum-/tijdnotatie of voorlooptekens; de preprocessing probeert die varianten automatisch te herkennen.
 
-## Pipeline-stappen
+## Snel Starten
 
-```
-raw_data.txt
-    │
-    ├─ 1. Laden          data_loader.py       → ruwe berichten inlezen
-    ├─ 2. Opschonen      data_cleaning.py     → encoding, lege regels, systeemberichten
-    ├─ 3. Anonimiseren   anonymizer.py        → echte namen → pseudo-namen (user_mapping.csv)
-    ├─ 4. Preprocessing  preprocessor.py      → datum/tijd parsing, auteur extractie
-    ├─ 5. Features       feature_engineering  → berichtlengte, tijdfeatures, emoji,
-    │                                            links, scheldwoorden (BOW), incident-labels
-    ├─ 6. Stylometrie    author_stylometry.py → karaktertrigrammen → CountVectorizer →
-    │                                            Manhattan-afstand → PCA / t-SNE / UMAP →
-    │                                            K-means clustering (4 clusters)
-    ├─ 7. Opslaan        pipeline.py          → data/processed/ (CSV + Parquet)
-    └─ 8. Visualisaties  visualizations/      → img/ (PNG)
+Installeer dependencies:
+
+```bash
+uv sync
 ```
 
----
+Draai de volledige pipeline:
 
-## Visualisaties
+```bash
+uv run python -m src.main
+```
 
-| Naam | Bestand | Beschrijving |
-|------|---------|--------------|
-| `incident_context_projection` | `incident_context_modeling.py` | Les 6 contextprojectie (tijdelijke hoofdplot): incident-gerelateerde versus reguliere berichten |
-| `incident_context_comparison` | idem | Ondersteunende vergelijking over PCA / t-SNE / UMAP (optioneel) |
-| `author_clustering*` | `author_clustering.py` | Exploratieve auteurstijl-projecties (secundair, niet hoofdoutput Les 6) |
-| `chat_activity_by_hour` | `chat_activity.py` | Berichtvolume per uur van de dag |
-| `chat_activity_distribution` | idem | Distributie van berichtvolume over 24 uur (incl. piekuur) |
-| `emoji_*` | `emoji.py` | Emoji-gebruik per auteur, per uur, heatmap |
-| `negative_reaction_*` | `negative_reactions.py` | Negatieve reacties (concentratie, scatter, diagnostiek) |
-| `incident_*` | `incident_timeline.py` | Incident-tijdlijn en activiteitspatronen |
+Of geef expliciet een ander exportbestand mee:
 
-### Gestalt-principes in de schrijfstijl-plot
+```bash
+uv run python -m src.main path/naar/chat_export.txt
+```
 
-De clusterchart past vijf Gestalt-principes toe om de informatie direct leesbaar te maken:
+Start het dashboard:
 
-- **Common Region** – vertrouwensellipsen (numpy eigendecompositie) omsluiten de tekstfragmenten per auteur
-- **Similarity** – alle punten van één cluster krijgen dezelfde kleur
-- **Figure/Ground** – grijze achtergrondpunten laten de gekleurde clusters uitspringen
-- **Proximity** – namen staan direct bij hun zwaartepunt (centroid), geen aparte legenda nodig
-- **Closure** – het storyboard-raster toont elk cluster apart zodat de grens direct zichtbaar is
+```bash
+uv run streamlit run src/dashboard.py
+```
 
----
+## Input En Output
 
-## Stylometrie — hoe werkt het?
+Verwachte input:
 
-1. Berichten per auteur worden samengevoegd tot één corpus en opgedeeld in chunks van 500 tekens.
-2. `CountVectorizer` zet elke chunk om naar een frequentievector van karaktertrigrammen (bv. `"hoe"`, `"oe "`, `"e j"`).
-3. De vectoren worden vergeleken via **Manhattan-afstand** — een robuuste maat voor stijlverschillen.
-4. **PCA**, **t-SNE** en **UMAP** reduceren de hoge-dimensionale ruimte naar 2D (of 3D) voor visualisatie.
-5. **K-means** (k=4) clustert auteurs op basis van de t-SNE-embedding.
+- `data/raw/raw_data.txt`
+- of elk ander `.txt` exportbestand dat je als argument meegeeft aan `src.main`
 
-### Exploratieve auteurstijl-clusters (secundair)
+Belangrijkste output:
 
-| Cluster | Kleur | Leeftijdsindicatie | Basis |
-|---------|-------|--------------------|-------|
-| Cluster 1 | rood | ~20–35 jaar | Lucas Joshua (20–35) |
-| Cluster 2 | groen | ~eind 20 | Harmen Jaarsma (eind 20) |
-| Cluster 3 | oranje | ~50+ jaar | Rene Warries (~50) |
-| Cluster 4 | blauw | ~35–60 jaar (breed) | Sander (~38), Sabien (~48), Esther (~58) |
-
-> **Let op:** schrijfstijl ≠ leeftijd. Clusters 1 en 2 overlappen qua leeftijd maar lijken stijlmatig te verschillen. Leeftijd is een *indicatieve* observatie, geen causale conclusie.
-
----
-
-## Lesfeedback verwerkt
-
-- **Les 2 (categorieën vergelijken):** categorieplots focussen op gerichte groepsvergelijking (emoji-categorieën en top-emoji heatmap), zonder tijd- of distributielogica te vermengen.
-- **Les 3 (tijdspatronen):** tijdplots gebruiken timestamps expliciet en tonen vooral wanneer activiteit piekt over de dag.
-- **Les 4 (distributies):** distributieplots blijven in echte tellingen met transparante aggregatie (geen misleidende density scaling).
-- **Les 5 (relaties + feature engineering):** incidentfeatures uit regex/BOW zijn gekoppeld aan activiteit; relatieplot toont correlatie, regressie en ratio-context.
-- **Les 6 (modelling 6.2):** hoofdvraag verschuift naar context: incident-gerelateerde versus reguliere berichten, met trigram + Manhattan-afstand + dimensiereductie.
-
-### Hoofdplots per les
-
-- **Les 2:** `img/les2/overall_emoji_distribution.png` en `img/les2/top_emojis_per_user.png`
-- **Les 3:** `img/les3/chat_activity_by_hour.png`
-- **Les 4:** `img/les4/chat_activity_weekday_weekend.png`, `img/les4/time_series_autocorrelation.png` en `img/les4/poisson_model.png`
-- **Les 5:** `img/les5/incident_discussion_timeline.png` en `img/les5/incident_activity_correlation.png`
-- **Les 6:** `img/les6/incident_context_projection_tsne.png` en `img/les6/incident_context_comparison.png`
-
-### Korte takeaways per les
-
-- **Les 2:** Humor en Positive lijken de grootste emoji-categorieën; per gebruiker zie je verschillende emoji-voorkeuren.
-- **Les 3:** De chatactiviteit lijkt vooral in de avond het hoogst, wat een dagritme suggereert.
-- **Les 4:** De verdeling van activiteit is scheef: veel lage waarden en een kleinere groep uitschieters.
-- **Les 5:** Er is een indicatie van een positieve relatie tussen drukke weken en meer incidentberichten.
-- **Les 6:** Incidentcontext lijkt hooguit een lichte verschuiving te geven; overlap blijft zichtbaar. De vergelijking over meerdere reductiemethoden ondersteunt dat beeld.
-
----
+- `data/processed/clean_chat_processed.csv`
+- `data/processed/clean_chat_processed.parquet`
+- `data/processed/user_mapping.csv`
+- `img/les*/...` voor de gegenereerde figuren
+- `logs/` voor logbestanden
 
 ## Projectstructuur
 
-```
+```text
 dav-chat-analysis/
+├── data/
+│   ├── raw/
+│   │   ├── raw_data.txt
+│   │   └── names/
+│   └── processed/
+├── img/
+├── logs/
 ├── src/
-│   ├── main.py                        # Entry point
-│   ├── pipeline.py                    # Pipeline-orkestrator
-│   ├── config.py                      # Pad- en parameterinstellingen
-│   ├── logging_config.py
+│   ├── main.py
+│   ├── config.py
+│   ├── pipeline.py
+│   ├── feature_pipeline.py
+│   ├── dashboard.py
 │   ├── modules/
 │   │   ├── data_loader.py
 │   │   ├── data_cleaning.py
 │   │   ├── anonymizer.py
 │   │   ├── preprocessor.py
 │   │   ├── feature_engineering.py
-│   │   ├── metadata.py
-│   │   └── author_stylometry.py       # Stylometrie + embeddings
+│   │   └── author_stylometry.py
 │   └── visualizations/
-│       ├── registry.py                # Visualisatie-registry
-│       ├── plot_settings.py           # Gedeelde stijlinstellingen
-│       ├── author_clustering.py       # Schrijfstijl-clustering
-│       ├── _author_clustering_plotter.py  # Plotly low-level renderer
+│       ├── registry.py
+│       ├── utils.py
+│       ├── plot_settings.py
 │       ├── chat_activity.py
 │       ├── emoji.py
-│       ├── negative_reactions.py
 │       ├── incident_timeline.py
-│       └── incident_context_modeling.py
-├── data/
-│   ├── raw/                           # Onbewerkte WhatsApp-export
-│   └── processed/                     # Verwerkte data (CSV + Parquet)
-│       └── user_mapping.csv           # Pseudo-naam ↔ echte naam mapping
-├── img/                               # Gegenereerde visualisaties (PNG)
-│   └── author_clusters.csv            # Cluster-indeling per auteur
-├── notebooks/                         # Jupyter notebooks (exploratie)
-├── logs/                              # Logbestanden
+│       ├── incident_context_modeling.py
+│       ├── poisson_modeling.py
+│       └── time_series_modeling.py
 ├── pyproject.toml
 └── readme.md
 ```
 
----
+## Waar Wat Staat
 
-## Installatie
+`src/main.py`
 
-Gebruik `uv` om de omgeving op te zetten:
+- klein entry point
+- zet logging op
+- start de pipeline op de standaard raw input
 
-```bash
-uv sync
-```
+`src/pipeline.py`
 
----
+- hoofdorkestratie van de pipeline
+- bepaalt welke visualisaties standaard aan staan
+- bepaalt welke features daarvoor nodig zijn
+- slaat outputbestanden op
 
-## Uitvoeren van de pipeline
+`src/feature_pipeline.py`
 
-```bash
-uv run python -m src.main
-```
+- houdt feature dependencies en execution order centraal
+- voorkomt duplicatie in `pipeline.py`
+- blijft expres klein: alleen resolve + apply
 
-Na uitvoering worden:
-- Verwerkte data opgeslagen in `data/processed/`
-- Visualisaties opgeslagen in `img/`
-- Logs opgeslagen in `logs/`
+`src/modules/`
 
-Specifieke visualisaties aan- of uitzetten kan via de `VISUALIZATION_SELECTIONS`-dict in `src/pipeline.py`.
+- preprocessing en feature engineering
+- deze map bevat de pure datastappen van raw tekst naar bruikbare dataframe
 
----
+`src/visualizations/`
 
-## Dashboard (nieuw)
+- wrappers en low-level plotters
+- `registry.py` laadt alleen de actieve pipeline-visualisaties
+- `plot_settings.py` houdt stijlinstellingen consistent
 
-Na het draaien van de pipeline kun je een interactief dashboard starten:
+`src/dashboard.py`
 
-```bash
-uv run streamlit run src/dashboard.py
-```
+- interactieve Streamlit-app op basis van de verwerkte CSV
+- gebruikt dezelfde processed data als de pipeline-output
 
-Het dashboard gebruikt `data/processed/clean_chat_processed.csv` en toont:
-- KPI-kaarten (berichten, auteurs, incident- en emoji-berichten)
-- Filters op auteur en datumrange
-- Interactieve visualisatie-selectie (Plotly, inclusief hover op punten/balken)
-- Knop om geselecteerde originele pipeline-visualisaties als PNG te genereren vanuit het dashboard
+## Technische Keuzes
 
----
+### Waarom Een PipelineRunner?
 
-## Gebruikte technologieën
+De pipeline heeft meerdere opeenvolgende stappen met duidelijke volgorde: load, clean, anonymize, feature engineering, save, visualize. Een kleine orkestratieklasse maakt die flow expliciet zonder de codebase zwaar te maken.
 
-| Pakket | Gebruik |
-|--------|---------|
-| `pandas` | Data-manipulatie en pipeline |
-| `numpy` | Matrices, eigendecompositie (ellipsen) |
-| `scikit-learn` | CountVectorizer, PCA, t-SNE, K-means |
-| `umap-learn` | UMAP-dimensiereductie |
-| `plotly` + `kaleido` | Interactieve plots → PNG export |
-| `matplotlib` / `seaborn` | Statische vergelijkingsplots |
-| `pyarrow` | Parquet-opslag |
-| `emoji` | Emoji-detectie en categorisatie |
-| `colorlog` | Gekleurde logging |
+### Waarom Een FeaturePipeline?
 
----
+Feature engineering heeft dependencies, bijvoorbeeld `emoji_category` hangt af van `emoji_features`. Die dependency-logica stond eerst verspreid in `pipeline.py`. `FeaturePipeline` centraliseert dat op een simpele manier en houdt de hoofd-pipeline leesbaar.
 
-## Versie
+### Waarom Functies In `modules/` In Plaats Van Overal Classes?
 
-Projectversie: 0.1.0
+De meeste datastappen zijn pure transformaties op een `DataFrame`. Daar zijn losse functies vaak duidelijker dan extra classes. Classes zijn alleen gebruikt waar coördinatie of state echt helpt, zoals bij `PipelineRunner` en `ChatPreprocessor`.
+
+### Waarom Zowel Matplotlib Als Plotly?
+
+- `Matplotlib` is gebruikt voor statische PNG-output waar precieze controle en snelle export belangrijk zijn.
+- `Plotly` is gebruikt waar interactieve varianten of complexere layout-handling handig zijn.
+- `Kaleido` verzorgt de PNG-export van Plotly-figuren.
+
+### Waarom CSV En Parquet?
+
+- CSV is makkelijk te inspecteren en bruikbaar in het dashboard
+- Parquet is compacter en handiger voor verdere analyse
+
+### Waarom Regex / Bag-of-Words Voor Incidentdetectie?
+
+Voor deze opdracht is een transparante en uitlegbare aanpak belangrijker dan een zwaarder model. De incidentdetectie is daarom bewust simpel en reproduceerbaar gehouden.
+
+### Hoe Generiek Is De WhatsApp-parser?
+
+De loader en parser proberen bewust niet van één specifieke export uit te gaan:
+
+- meerdere encodings worden geprobeerd (`utf-8`, `utf-8-sig`, `utf-16`, `cp1252`, `latin-1`)
+- bracketed en unbracketed WhatsApp prefixes worden herkend
+- slash- en hyphen-datums worden ondersteund
+- 24-uurs en 12-uurs tijden worden ondersteund
+- seconden zijn optioneel
+- multiline berichten blijven samengevoegd tot één bericht
+
+Daardoor is de pipeline minder gebonden aan één specifieke chat of één exportplatform.
+
+## Visualisaties Configureren
+
+De standaardselectie staat bovenin [src/pipeline.py](/Users/lucasjoshua/Documents/Opleiding/4_Data_Analysis_and_Visualisation/dav-chat-analysis/src/pipeline.py). Daar kun je:
+
+- visualisaties aan of uit zetten via `DEFAULT_VISUALIZATION_SELECTIONS`
+- de featurebehoefte per visualisatie aanpassen via `VISUALIZATION_FEATURES`
+
+## Dashboard
+
+Het dashboard leest `data/processed/clean_chat_processed.csv` en biedt:
+
+- KPI-kaarten
+- datumfilters
+- interactieve Plotly-visualisaties
+- een UI om geselecteerde pipeline-visualisaties opnieuw te genereren
+
+## Opmerkingen
+
+- `img/` is bedoeld als gegenereerde outputmap en niet als broncode
+- de README is bewust technisch gehouden; het inhoudelijke verhaal van de opdracht hoort in het verslag
