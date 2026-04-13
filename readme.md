@@ -37,13 +37,11 @@ raw_data.txt
 
 | Naam | Bestand | Beschrijving |
 |------|---------|--------------|
-| `author_clustering` | `author_clustering.py` | t-SNE scatter met schrijfstijl-clusters en Gestalt-principes |
-| `author_clustering_pca` | idem | Zelfde visualisatie op PCA-embedding |
-| `author_clustering_umap` | idem | Zelfde visualisatie op UMAP-embedding |
-| `author_clustering_comparison` | idem | Zij-aan-zij vergelijking PCA / t-SNE / UMAP |
+| `incident_context_projection` | `incident_context_modeling.py` | Les 6 contextprojectie (tijdelijke hoofdplot): incident-gerelateerde versus reguliere berichten |
+| `incident_context_comparison` | idem | Ondersteunende vergelijking over PCA / t-SNE / UMAP (optioneel) |
+| `author_clustering*` | `author_clustering.py` | Exploratieve auteurstijl-projecties (secundair, niet hoofdoutput Les 6) |
 | `chat_activity_by_hour` | `chat_activity.py` | Berichtvolume per uur van de dag |
-| `chat_activity_distribution` | idem | Distributie van berichtfrequentie per auteur |
-| `response_time_suite` | `response_time_suite.py` | Reactietijden tussen auteurs |
+| `chat_activity_distribution` | idem | Distributie van berichtvolume over 24 uur (incl. piekuur) |
 | `emoji_*` | `emoji.py` | Emoji-gebruik per auteur, per uur, heatmap |
 | `negative_reaction_*` | `negative_reactions.py` | Negatieve reacties (concentratie, scatter, diagnostiek) |
 | `incident_*` | `incident_timeline.py` | Incident-tijdlijn en activiteitspatronen |
@@ -68,7 +66,7 @@ De clusterchart past vijf Gestalt-principes toe om de informatie direct leesbaar
 4. **PCA**, **t-SNE** en **UMAP** reduceren de hoge-dimensionale ruimte naar 2D (of 3D) voor visualisatie.
 5. **K-means** (k=4) clustert auteurs op basis van de t-SNE-embedding.
 
-### Gevonden clusters (referentiepunten van bekende deelnemers)
+### Exploratieve auteurstijl-clusters (secundair)
 
 | Cluster | Kleur | Leeftijdsindicatie | Basis |
 |---------|-------|--------------------|-------|
@@ -77,7 +75,31 @@ De clusterchart past vijf Gestalt-principes toe om de informatie direct leesbaar
 | Cluster 3 | oranje | ~50+ jaar | Rene Warries (~50) |
 | Cluster 4 | blauw | ~35–60 jaar (breed) | Sander (~38), Sabien (~48), Esther (~58) |
 
-> **Let op:** schrijfstijl ≠ leeftijd. Clusters 1 en 2 overlappen qua leeftijd maar hebben aantoonbaar verschillende schrijfstijlen. Leeftijd is een *indicatieve* observatie, geen causale conclusie.
+> **Let op:** schrijfstijl ≠ leeftijd. Clusters 1 en 2 overlappen qua leeftijd maar lijken stijlmatig te verschillen. Leeftijd is een *indicatieve* observatie, geen causale conclusie.
+
+---
+
+## Lesfeedback verwerkt
+
+- **Les 2 (categorieën vergelijken):** categorieplots focussen op gerichte groepsvergelijking (emoji-categorieën en top-emoji heatmap), zonder tijd- of distributielogica te vermengen.
+- **Les 3 (tijdspatronen):** tijdplots gebruiken timestamps expliciet en tonen vooral wanneer activiteit piekt over de dag.
+- **Les 4 (distributies):** distributieplots blijven in echte tellingen met transparante aggregatie (geen misleidende density scaling).
+- **Les 5 (relaties + feature engineering):** incidentfeatures uit regex/BOW zijn gekoppeld aan activiteit; relatieplot toont correlatie, regressie en ratio-context.
+- **Les 6 (modelling 6.2):** hoofdvraag verschuift naar context: incident-gerelateerde versus reguliere berichten, met trigram + Manhattan-afstand + dimensiereductie.
+
+### Hoofdplots per les
+
+- **Les 2:** `img/les2/overall_emoji_distribution.png` en `img/les2/top_emojis_per_user.png`
+- **Les 3:** `img/les3/chat_activity_by_hour.png`
+- **Les 6:** `img/les6/incident_context_projection_tsne.png` (tijdelijke placeholder, nog inhoudelijk te beoordelen)
+
+### Korte takeaways per les
+
+- **Les 2:** Humor en Positive lijken de grootste emoji-categorieën; per gebruiker zie je verschillende emoji-voorkeuren.
+- **Les 3:** De chatactiviteit lijkt vooral in de avond het hoogst, wat een dagritme suggereert.
+- **Les 4:** De verdeling van activiteit is scheef: veel lage waarden en een kleinere groep uitschieters.
+- **Les 5:** Er is een indicatie van een positieve relatie tussen drukke weken en meer incidentberichten.
+- **Les 6:** Incidentcontext lijkt hooguit een lichte verschuiving te geven; overlap blijft zichtbaar. Dit blijft voorlopig een tijdelijke eindplot.
 
 ---
 
@@ -107,7 +129,7 @@ dav-chat-analysis/
 │       ├── emoji.py
 │       ├── negative_reactions.py
 │       ├── incident_timeline.py
-│       └── response_time_suite.py
+│       └── incident_context_modeling.py
 ├── data/
 │   ├── raw/                           # Onbewerkte WhatsApp-export
 │   └── processed/                     # Verwerkte data (CSV + Parquet)

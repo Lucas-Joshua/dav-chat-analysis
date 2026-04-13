@@ -1,55 +1,75 @@
-"""Low-level plot constructors for Poisson statistical modeling (Les 5).
-
-Approach
---------
-1. Aggregate messages into 15-minute intervals.
-2. Fit a Poisson distribution: λ = mean count per interval.
-3. Compare the observed count distribution (histogram) to the theoretical
-   Poisson PMF scaled to the same total.
-4. On a separate timeline, mark intervals that deviate more than the 99th-
-   percentile Poisson threshold — these are candidate anomalies.
-
-Note on the noise/error term
------------------------------
-Real chat activity is *over-dispersed* (variance > mean), meaning a pure
-Poisson model underestimates tail probabilities.  The residual plotted below
-represents exactly this noise: the part of activity that Poisson cannot
-explain.  In a comment inside the function we document this for notebook use.
-"""
+"""Low-level plot constructors for Poisson distribution comparison (Les 4 DIST)."""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 from scipy.stats import poisson
 
+from src.modules.feature_engineering import INCIDENT_BOW_TERMS
 from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
+from src.visualizations.utils import ensure_parent_dir, set_plotly_title, style_plotly_xy_axes
 
 
-def plot_poisson_model(
+def _classify_days(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
+    """Split daily message counts into normal days and incident days.
+
+    A day is classified as an 'incident day' when it contains ≥1 message that
+    matches the incident bag-of-words.  Daily aggregation gives enough data per
+    group for a stable Poisson fit and makes the λ-shift clearly visible.
+
+    :param df: Dataframe with ``datetime`` and ``message`` columns.
+    :type df: pd.DataFrame
+    :return: Tuple (normal_counts, incident_counts) as pandas Series.
+    :rtype: tuple[pd.Series, pd.Series]
+    """
+    terms = [str(t) for t in INCIDENT_BOW_TERMS]
+    pattern = r"\b(?:{})\b".format(
+        "|".join(re.escape(t).replace(r"\ ", r"\s+") for t in terms)
+    )
+    working = df.copy()
+    working["datetime"] = pd.to_datetime(working["datetime"], errors="coerce")
+    working = working.dropna(subset=["datetime"])
+    working["is_incident"] = (
+        working["message"]
+        .fillna("")
+        .astype(str)
+        .str.contains(pattern, case=False, regex=True)
+    )
+
+    daily_total: pd.Series = (
+        working.set_index("datetime").resample("1D").size().rename("count")
+    )
+    daily_flag: pd.Series = (
+        working.set_index("datetime")["is_incident"]
+        .resample("1D")
+        .sum()
+        .gt(0)
+    )
+
+    active = daily_total > 0  # only days with ≥1 message
+    incident_counts = daily_total[daily_flag & active]
+    normal_counts = daily_total[~daily_flag & active]
+    return normal_counts, incident_counts
+
+
+def plot_poisson_dual_distribution(
     df: pd.DataFrame,
-    out_path: str | Path = "img/poisson_model.png",
+    out_path: str | Path = "img/poisson_dual_distribution.png",
 ) -> None:
-    """Plot observed vs. Poisson-expected message counts with anomaly marking.
+    """Compare daily message-count distributions for normal vs incident days.
 
-    Upper panel: distribution comparison — observed histogram of per-interval
-    counts versus the Poisson PMF scaled to the same N.
-    Lower panel: time series with the Poisson 99th-percentile threshold drawn
-    as a dashed line so anomalous spikes are immediately visible.
+    Two overlapping histograms (grey = normal, red = incident days) are shown
+    with their fitted Poisson PMF curves, making the lambda-shift immediately
+    visible.  Models chat as a Poisson counting process where incident days
+    correspond to a higher intensity parameter (lambda_1 > lambda_0).
 
-    Noise/error term note
-    ---------------------
-    The Poisson model assumes Var(X) = λ.  Real chat data shows Var(X) >> λ
-    (over-dispersion caused by burst behaviour, incident discussions, etc.).
-    The residual ``observed − λ`` therefore contains both random noise and
-    systematic deviations; the anomaly detection threshold (ppf 0.99) accounts
-    for this by using the Poisson upper tail as a conservative bound.
-
-    :param df: Processed chat dataframe with a ``datetime`` column.
+    :param df: Processed chat dataframe with ``datetime`` and ``message`` columns.
     :type df: pd.DataFrame
     :param out_path: Destination path for the exported image.
     :type out_path: str | Path
@@ -59,26 +79,137 @@ def plot_poisson_model(
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
+    normal_counts, incident_counts = _classify_days(df)
+
+    lam0 = float(normal_counts.mean())
+    lam1 = float(incident_counts.mean()) if len(incident_counts) > 0 else 0.0
+    n_normal = len(normal_counts)
+    n_incident = len(incident_counts)
+
+    color_normal = DEFAULT_PLOT_SETTINGS.neutral_color
+    color_incident = DEFAULT_PLOT_SETTINGS.danger_color
+
+    max_val = int(max(normal_counts.max(), incident_counts.max() if n_incident else 0))
+    # Cap x-range so the plot stays readable
+    x_max_pmf = min(max_val + 2, int(lam1 * 3 + 20))
+    x_pmf = np.arange(0, x_max_pmf + 1)
+
+    pmf0 = poisson.pmf(x_pmf, lam0) * n_normal
+    pmf1 = poisson.pmf(x_pmf, lam1) * n_incident if n_incident > 0 else np.zeros_like(x_pmf, dtype=float)
+
+    plt.style.use(DEFAULT_PLOT_SETTINGS.matplotlib_style)
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+
+    # Bin edges covering both distributions
+    bins = np.arange(0, min(max_val + 3, x_max_pmf + 3)) - 0.5
+
+    ax.hist(
+        normal_counts,
+        bins=bins,
+        color=color_normal,
+        alpha=0.55,
+        label=f"Normale dag (n={n_normal}, lam_0={lam0:.1f})",
+        density=False,
+    )
+    if n_incident > 0:
+        ax.hist(
+            incident_counts,
+            bins=bins,
+            color=color_incident,
+            alpha=0.65,
+            label=f"Incident-dag (n={n_incident}, lam_1={lam1:.1f})",
+            density=False,
+        )
+
+    # Poisson fit curves
+    ax.plot(x_pmf, pmf0, color="#555555", linewidth=1.8, linestyle="--",
+            label=f"Pois(lam_0={lam0:.1f})")
+    if n_incident > 0:
+        ax.plot(x_pmf, pmf1, color=color_incident, linewidth=2.0, linestyle="--",
+                label=f"Pois(lam_1={lam1:.1f})")
+
+    # lambda-shift annotation — point to where the incident PMF peaks
+    if n_incident > 0:
+        peak_x = int(round(lam1))
+        peak_y = float(pmf1[peak_x]) if peak_x < len(pmf1) else float(pmf1[-1])
+        pct = (lam1 / lam0 - 1) * 100
+        ax.annotate(
+            f"Delta-lam = {lam1 - lam0:+.1f}\n(+{pct:.0f}% intensiteit)",
+            xy=(peak_x, peak_y),
+            xytext=(peak_x + max(4, int(lam1 * 0.4)), peak_y * 1.4),
+            fontsize=10,
+            color=color_incident,
+            arrowprops=dict(arrowstyle="->,head_width=0.3", color=color_incident, lw=1.0),
+        )
+
+    ax.set_xlabel("Berichten per dag", fontsize=11)
+    ax.set_ylabel("Aantal dagen", fontsize=11)
+    ax.set_title(
+        "Incident-dagen volgen een hogere Poisson-intensiteit (lam_1 > lam_0)",
+        fontsize=12, fontweight="bold", pad=12,
+    )
+    ax.legend(fontsize=9, frameon=False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", alpha=0.18, color="#D9D9D9")
+    ax.grid(axis="x", visible=False)
+
+    ax.text(
+        0.98, 0.98,
+        "m_dag ~ Pois(lam)  |  incident-dag = hogere intensiteit lam",
+        transform=ax.transAxes, ha="right", va="top",
+        fontsize=8.5, color=DEFAULT_PLOT_SETTINGS.muted_text_color,
+        style="italic",
+    )
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=DEFAULT_PLOT_SETTINGS.dpi)
+    plt.close(fig)
+
+
+def plot_poisson_model(
+    df: pd.DataFrame,
+    out_path: str | Path = "img/poisson_model.png",
+) -> None:
+    """Plot observed frequency versus Poisson expectation in one clear chart.
+
+    :param df: Processed chat dataframe with a ``datetime`` column.
+    :type df: pd.DataFrame
+    :param out_path: Destination path for the exported image.
+    :type out_path: str | Path
+    :return: None.
+    :rtype: None
+    """
+    out_path = ensure_parent_dir(out_path)
+
     if "datetime" not in df.columns:
         raise KeyError("datetime column not found in dataframe.")
 
     date_min = df["datetime"].min().strftime("%b %Y")
     date_max = df["datetime"].max().strftime("%b %Y")
 
-    # --- Aggregate to 15-minute intervals ---
-    ts: pd.Series = (
+    # --- Aggregate to an interpretable interval ---
+    ts_hourly: pd.Series = (
         df.set_index("datetime")
-        .resample("15min")
+        .resample("1h")
         .size()
         .rename("count")
     )
+    if float(ts_hourly.mean()) < 2.0:
+        ts = (
+            df.set_index("datetime")
+            .resample("1d")
+            .size()
+            .rename("count")
+        )
+        interval_label = "dag"
+    else:
+        ts = ts_hourly
+        interval_label = "uur"
 
-    # λ = mean messages per 15-minute interval (Poisson rate parameter)
+    # λ = mean messages per gekozen interval (Poisson rate parameter)
     lam: float = float(ts.mean())
     n_intervals = len(ts)
-
-    # --- Anomaly threshold: Poisson 99th percentile ---
-    threshold = int(poisson.ppf(0.99, lam))
 
     # --- Observed count distribution ---
     max_count = int(ts.max())
@@ -87,37 +218,23 @@ def plot_poisson_model(
 
     # --- Poisson expected frequency ---
     expected_freq = poisson.pmf(count_vals, lam) * n_intervals
+    threshold = int(poisson.ppf(0.99, lam))
+    outlier_share = float((ts > threshold).mean())
 
-    primary = DEFAULT_PLOT_SETTINGS.primary_color
     accent = DEFAULT_PLOT_SETTINGS.danger_color
     neutral = DEFAULT_PLOT_SETTINGS.neutral_color
 
-    fig = make_subplots(
-        rows=2,
-        cols=1,
-        row_heights=[0.45, 0.55],
-        vertical_spacing=0.12,
-        subplot_titles=[
-            f"Verdeling per interval: Waargenomen vs. Poisson (λ = {lam:.2f})",
-            "Tijdreeks met anomalie-grens (Poisson P99)",
-        ],
-    )
-
-    # ---- Row 1: distribution comparison ----
-
-    # Observed bars
+    fig = go.Figure()
     fig.add_trace(
         go.Bar(
             x=count_vals,
             y=observed_freq,
             name="Waargenomen",
             marker_color=neutral,
-            opacity=0.75,
-        ),
-        row=1, col=1,
+            opacity=0.8,
+        )
     )
 
-    # Poisson expected line
     fig.add_trace(
         go.Scatter(
             x=count_vals,
@@ -126,11 +243,9 @@ def plot_poisson_model(
             name=f"Poisson (λ = {lam:.2f})",
             line=dict(color=accent, width=2.5),
             marker=dict(size=5),
-        ),
-        row=1, col=1,
+        )
     )
 
-    # Annotate λ
     fig.add_annotation(
         x=lam,
         y=float(expected_freq[int(round(lam))]),
@@ -140,111 +255,29 @@ def plot_poisson_model(
         ax=40,
         ay=-35,
         font=dict(size=11, color=accent),
-        row=1, col=1,
     )
 
-    fig.update_xaxes(
-        title_text="Berichten per 15-min interval",
-        showgrid=True,
-        gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-        zeroline=False,
-        range=[-0.5, min(max_count, int(lam * 5) + 1)],
-        row=1, col=1,
-    )
-    fig.update_yaxes(
-        title_text="Frequentie (# intervallen)",
-        showgrid=True,
-        gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-        zeroline=False,
-        row=1, col=1,
-    )
-
-    # ---- Row 2: time series with anomaly threshold ----
-
-    # Mark anomalous intervals
-    anomaly_mask = ts > threshold
-    normal_ts = ts[~anomaly_mask]
-    anomaly_ts = ts[anomaly_mask]
-
-    fig.add_trace(
-        go.Scatter(
-            x=normal_ts.index,
-            y=normal_ts.values,
-            mode="lines",
-            name="Normale activiteit",
-            line=dict(color=primary, width=1),
-            opacity=0.6,
-        ),
-        row=2, col=1,
-    )
-
-    fig.add_trace(
-        go.Scatter(
-            x=anomaly_ts.index,
-            y=anomaly_ts.values,
-            mode="markers",
-            name=f"Anomalie (> P99 = {threshold})",
-            marker=dict(color=accent, size=6, symbol="circle"),
-        ),
-        row=2, col=1,
-    )
-
-    # Threshold line
-    fig.add_hline(
-        y=threshold,
-        line_dash="dash",
-        line_color=accent,
-        line_width=1.8,
-        annotation_text=f"P99 drempel = {threshold}",
-        annotation_position="top right",
-        row=2, col=1,
-    )
-
-    # λ reference line
-    fig.add_hline(
-        y=lam,
-        line_dash="dot",
-        line_color="rgba(0,0,0,0.35)",
-        line_width=1.2,
-        annotation_text=f"λ = {lam:.1f}",
-        annotation_position="bottom right",
-        row=2, col=1,
-    )
-
-    n_anomalies = int(anomaly_mask.sum())
-    fig.update_xaxes(
-        title_text="Datum / tijd",
-        showgrid=True,
-        gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-        zeroline=False,
-        row=2, col=1,
-    )
-    fig.update_yaxes(
-        title_text="Berichten per 15 min",
-        showgrid=True,
-        gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-        zeroline=False,
-        row=2, col=1,
+    style_plotly_xy_axes(
+        fig,
+        x_title=f"Berichten per {interval_label}-interval",
+        y_title="Frequentie (# intervallen)",
+        x_range=(-0.5, min(max_count, int(lam * 5) + 1)),
     )
 
     fig.update_layout(
         DEFAULT_PLOT_SETTINGS.base_plotly_layout(
-            margin={"l": 60, "r": 60, "t": 110, "b": 60},
+            margin={"l": 60, "r": 40, "t": 100, "b": 60},
         )
     )
+    set_plotly_title(
+        fig,
+        title=f"Verdeling van chatactiviteit per {interval_label}",
+        subtitle=f"Meeste intervallen hebben lage aantallen; uitschieters (>P99={threshold}) ≈ {outlier_share:.1%}",
+    )
     fig.update_layout(
-        title={
-            "text": (
-                "Poisson-model · Berichtenfrequentie per 15-minuten interval"
-                f"<br><sup>λ = {lam:.2f} berichten/interval · {n_anomalies} anomalieën"
-                f" · {date_min} – {date_max}</sup>"
-            ),
-            "x": 0.5,
-            "xanchor": "center",
-        },
-        height=680,
-        legend=dict(orientation="h", y=1.04, x=0.5, xanchor="center"),
+        height=520,
+        legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center"),
         bargap=0.1,
     )
 
-    fig.write_image(str(out_path), scale=2)
+    fig.write_image(out_path, scale=2)

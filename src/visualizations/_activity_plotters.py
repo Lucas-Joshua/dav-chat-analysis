@@ -5,36 +5,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Optional
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-from scipy.interpolate import CubicSpline
-from scipy.optimize import curve_fit
-from scipy.stats import gaussian_kde
 
 from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _sine_model(t: np.ndarray, amplitude: float, phase: float, offset: float) -> np.ndarray:
-    """Sinusoidal model with 24-hour period.
-
-    :param t: Time values (hours 0–23).
-    :type t: np.ndarray
-    :param amplitude: Wave amplitude.
-    :type amplitude: float
-    :param phase: Phase offset in radians.
-    :type phase: float
-    :param offset: Vertical offset (mean level).
-    :type offset: float
-    :return: Modelled values at each time point.
-    :rtype: np.ndarray
-    """
-    return amplitude * np.sin(2 * np.pi * t / 24 + phase) + offset
+from src.visualizations.utils import (
+    ensure_parent_dir,
+    focus_colors,
+    hourly_message_counts,
+    set_plotly_title,
+    style_plotly_xy_axes,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -45,12 +28,7 @@ def plot_chat_activity_by_hour(
     df: pd.DataFrame,
     out_path: str | Path = "img/chat_activity_by_hour.png",
 ) -> None:
-    """Plot hourly chat activity with cubic-spline smoothing and sine decomposition.
-
-    The top panel shows the smoothed actual activity overlaid with a fitted
-    sinusoidal trend.  The bottom panel shows the residual (actual minus sine)
-    so deviations from the daily rhythm are immediately visible.  The real
-    activity peak is annotated automatically.
+    """Plot hourly chat activity with one clear message: when chat is most active.
 
     :param df: Input dataframe with ``datetime`` and ``hour`` columns.
     :type df: pd.DataFrame
@@ -59,278 +37,93 @@ def plot_chat_activity_by_hour(
     :return: None.
     :rtype: None
     """
-    out_path = Path(out_path)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if "hour" not in df.columns:
-        raise KeyError("hour column not found. Run add_time_features first.")
+    out_path = ensure_parent_dir(out_path)
 
     date_min = df["datetime"].min().strftime("%b %Y")
     date_max = df["datetime"].max().strftime("%b %Y")
 
-    hourly_counts = (
-        df["hour"]
-        .value_counts()
-        .reindex(range(24), fill_value=0)
-        .sort_index()
-        .reset_index()
+    hourly_counts = hourly_message_counts(df, hour_col="hour")
+
+    peak_idx = int(hourly_counts["count"].idxmax())
+    peak_hour = int(hourly_counts.loc[peak_idx, "hour"])
+    peak_count = int(hourly_counts.loc[peak_idx, "count"])
+    total_count = int(hourly_counts["count"].sum())
+    peak_share = peak_count / max(float(total_count), 1.0)
+    peak_pct = peak_share * 100.0
+    peak_count_text = f"{peak_count:,}".replace(",", ".")
+    bar_colors = focus_colors(hourly_counts["hour"].eq(peak_hour))
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Bar(
+            x=hourly_counts["hour"],
+            y=hourly_counts["count"],
+            name="Berichten per uur",
+            marker_color=bar_colors,
+            opacity=0.9,
+            showlegend=False,
+        )
     )
-    hourly_counts.columns = ["hour", "count"]
+    fig.add_annotation(
+        x=peak_hour,
+        y=peak_count,
+        text=f"Piek: {peak_hour}:00 ({peak_count_text} berichten, ≈{peak_pct:.1f}% van totaal)",
+        showarrow=True,
+        arrowhead=2,
+        ax=45,
+        ay=-35,
+        font=dict(size=10),
+    )
 
-    hours = hourly_counts["hour"].to_numpy(dtype=float)
-    counts = hourly_counts["count"].to_numpy(dtype=float)
-
-    # --- Cubic-spline smooth (more interpolated points → smoother line) ---
-    cs = CubicSpline(hours, counts)
-    t_fine = np.linspace(0, 23, 300)
-    y_smooth = np.clip(cs(t_fine), 0, None)
-
-    # --- Sine-wave fit ---
-    try:
-        p0 = [max(counts.std(), 1.0), 0.0, counts.mean()]
-        popt, _ = curve_fit(_sine_model, hours, counts, p0=p0, maxfev=8000)
-        y_sine = _sine_model(t_fine, *popt)
-        y_sine_at_hours = _sine_model(hours, *popt)
-        residuals = counts - y_sine_at_hours
-        sine_ok = True
-    except RuntimeError:
-        sine_ok = False
-
-    # --- Actual peak (not hardcoded) ---
-    peak_idx = int(np.argmax(counts))
-    peak_hour = int(hours[peak_idx])
-    peak_count = int(counts[peak_idx])
-
-    primary = DEFAULT_PLOT_SETTINGS.primary_color
-    accent = DEFAULT_PLOT_SETTINGS.danger_color
-    neutral = DEFAULT_PLOT_SETTINGS.neutral_color
-
-    # --- Build figure ---
-    if sine_ok:
-        fig = make_subplots(
-            rows=2,
-            cols=1,
-            row_heights=[0.68, 0.32],
-            shared_xaxes=True,
-            vertical_spacing=0.10,
-            subplot_titles=["Activiteit per uur + sinusfit", "Residu (Werkelijk − Sinus)"],
-        )
-
-        # Smoothed actual line
-        fig.add_trace(
-            go.Scatter(
-                x=t_fine,
-                y=y_smooth,
-                mode="lines",
-                name="Berichten (smooth)",
-                line=dict(color=primary, width=2.5),
-            ),
-            row=1, col=1,
-        )
-
-        # Original hourly dots
-        fig.add_trace(
-            go.Scatter(
-                x=hours,
-                y=counts,
-                mode="markers",
-                name="Uurgemiddelde",
-                marker=dict(color=primary, size=6, opacity=0.65),
-                showlegend=False,
-            ),
-            row=1, col=1,
-        )
-
-        # Fitted sine
-        fig.add_trace(
-            go.Scatter(
-                x=t_fine,
-                y=y_sine,
-                mode="lines",
-                name="Sinusfit",
-                line=dict(color=accent, width=2, dash="dot"),
-            ),
-            row=1, col=1,
-        )
-
-        # Peak annotation
-        fig.add_annotation(
-            x=peak_hour,
-            y=peak_count,
-            text=f"Piek: {peak_hour}:00 uur ({peak_count:,} berichten)",
-            showarrow=True,
-            arrowhead=2,
-            ax=50,
-            ay=-45,
-            font=dict(size=11),
-            row=1, col=1,
-        )
-
-        # Residuals bar chart
-        res_colors = [
-            accent if r > 0 else neutral for r in residuals
-        ]
-        fig.add_trace(
-            go.Bar(
-                x=hours,
-                y=residuals,
-                name="Residu",
-                marker_color=res_colors,
-                showlegend=False,
-            ),
-            row=2, col=1,
-        )
-        fig.add_hline(
-            y=0,
-            line_width=1,
-            line_dash="solid",
-            line_color="rgba(0,0,0,0.3)",
-            row=2, col=1,
-        )
-
-        fig.update_xaxes(
-            range=[-0.5, 23.5],
-            tickmode="linear",
-            dtick=2,
-            showgrid=True,
-            gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-            zeroline=False,
-            title_text="Uur van de dag",
-            row=2, col=1,
-        )
-        fig.update_xaxes(
-            range=[-0.5, 23.5],
-            tickmode="linear",
-            dtick=2,
-            showgrid=True,
-            gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-            zeroline=False,
-            row=1, col=1,
-        )
-        fig.update_yaxes(
-            showgrid=True,
-            gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-            zeroline=False,
-            title_text="Aantal berichten",
-            row=1, col=1,
-        )
-        fig.update_yaxes(
-            showgrid=True,
-            gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-            zeroline=False,
-            title_text="Residu",
-            row=2, col=1,
-        )
-
-        height = 580
-
-    else:
-        # Fallback when sine fit fails: single-panel smooth line
-        fig = go.Figure()
-        fig.add_trace(
-            go.Scatter(
-                x=t_fine,
-                y=y_smooth,
-                mode="lines",
-                name="Berichten",
-                line=dict(color=primary, width=2.5),
-            )
-        )
-        fig.add_trace(
-            go.Scatter(
-                x=hours,
-                y=counts,
-                mode="markers",
-                marker=dict(color=primary, size=6, opacity=0.65),
-                showlegend=False,
-            )
-        )
-        fig.add_annotation(
-            x=peak_hour,
-            y=peak_count,
-            text=f"Piek: {peak_hour}:00 uur ({peak_count:,} berichten)",
-            showarrow=True,
-            arrowhead=2,
-            ax=50,
-            ay=-45,
-        )
-        fig.update_xaxes(
-            range=[-0.5, 23.5],
-            tickmode="linear",
-            dtick=2,
-            showgrid=True,
-            gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-            zeroline=False,
-            title_text="Uur van de dag",
-        )
-        fig.update_yaxes(
-            showgrid=True,
-            gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-            zeroline=False,
-            title_text="Aantal berichten",
-        )
-        height = 420
+    style_plotly_xy_axes(
+        fig,
+        x_title="Uur van de dag",
+        y_title="Aantal berichten",
+        x_dtick=2,
+        x_range=(-0.5, 23.5),
+    )
 
     fig.update_layout(
         DEFAULT_PLOT_SETTINGS.base_plotly_layout(
-            margin={"l": 60, "r": 40, "t": 100, "b": 60},
+            margin={"l": 60, "r": 40, "t": 95, "b": 60},
         )
     )
-    fig.update_layout(
-        title={
-            "text": (
-                "Chat-activiteit per uur van de dag · Sinus-decompositie"
-                f"<br><sup>Berichten per uur · {date_min} – {date_max}"
-                " · Alle dagen geaggregeerd · Cubic-spline smoothing</sup>"
-            ),
-            "x": 0.5,
-            "xanchor": "center",
-        },
-        height=height,
-        legend=dict(orientation="h", y=1.06, x=0.5, xanchor="center"),
+    set_plotly_title(
+        fig,
+        title="Patroon van chatactiviteit per uur",
+        subtitle=f"Piekuur valt samen met hoogste berichtvolume · {date_min} – {date_max} · percentage = aandeel van totaal aantal berichten",
     )
+    fig.update_layout(height=480)
 
-    fig.write_image(str(out_path), scale=2)
+    fig.write_image(out_path, scale=2)
 
 
 def plot_chat_activity_distribution(
     df: pd.DataFrame,
     output: Optional[Path] = None,
 ) -> go.Figure:
-    """Visualize hourly chat-message distribution with a KDE curve overlay.
+    """Visualize the discrete hourly message distribution over all observations.
 
-    A bar chart shows raw message counts per hour.  A Gaussian KDE curve is
-    fitted to the same data (scaled to message-count units) and overlaid so
-    the underlying continuous distribution is visible next to the discrete
-    bars.
+    This chart intentionally stays in count space (no scaled density overlay)
+    so the visual read matches the exact grouped values.
 
     :param df: Input dataframe with an ``hour`` column.
     :type df: pd.DataFrame
     :param output: Optional output image path.
     :type output: Optional[Path]
-    :return: Plotly figure with hourly distribution bars and KDE overlay.
+    :return: Plotly figure with hourly distribution bars.
     :rtype: go.Figure
     """
     df = df.copy()
 
-    hourly_counts = (
-        df.groupby("hour")
-        .size()
-        .reset_index(name="messages")
-        .sort_values("hour")
-    )
+    hourly_counts = hourly_message_counts(df, hour_col="hour").rename(columns={"count": "messages"})
 
-    primary = DEFAULT_PLOT_SETTINGS.primary_color
-    neutral = DEFAULT_PLOT_SETTINGS.neutral_color
+    accent = DEFAULT_PLOT_SETTINGS.danger_color
 
-    # --- KDE scaled to total message count ---
-    hours_expanded = np.repeat(
-        hourly_counts["hour"].values,
-        hourly_counts["messages"].values,
-    )
-    kde = gaussian_kde(hours_expanded, bw_method=0.25)
-    x_fine = np.linspace(0, 23, 300)
-    kde_scaled = kde(x_fine) * hourly_counts["messages"].sum()
+    threshold = float(hourly_counts["messages"].quantile(0.95))
+    is_extreme = hourly_counts["messages"] >= threshold
+    n_extreme = int(is_extreme.sum())
+    bar_colors = focus_colors(is_extreme)
 
     # --- Figure ---
     fig = go.Figure()
@@ -341,50 +134,202 @@ def plot_chat_activity_distribution(
             x=hourly_counts["hour"],
             y=hourly_counts["messages"],
             name="Berichten per uur",
-            marker_color=neutral,
+            marker_color=bar_colors,
             showlegend=False,
         )
     )
-
-    # KDE overlay
-    fig.add_trace(
-        go.Scatter(
-            x=x_fine,
-            y=kde_scaled,
-            mode="lines",
-            name="Kansdichtheid (KDE)",
-            line=dict(color=primary, width=2.5),
-        )
+    max_hour = int(hourly_counts.loc[hourly_counts["messages"].idxmax(), "hour"])
+    max_messages = int(hourly_counts["messages"].max())
+    fig.add_annotation(
+        x=max_hour,
+        y=max_messages,
+        text=f"Uitschieter: {max_hour}:00",
+        showarrow=True,
+        arrowhead=2,
+        ax=40,
+        ay=-35,
+        font=dict(size=10, color=accent),
     )
 
     fig.update_layout(
         template=DEFAULT_PLOT_SETTINGS.plotly_template,
         bargap=0.35,
         legend=dict(orientation="h", y=1.08, x=0.5, xanchor="center"),
-        title={
-            "text": (
-                "Meeste chat-activiteit tijdens operationele uren van de dropzone"
-                "<br><sup>Verdeling van berichten over de dag (Oct 2024 – Feb 2026)"
-                " · staafdiagram + KDE-curve</sup>"
-            ),
-            "x": 0.5,
-        },
     )
-    fig.update_xaxes(
-        dtick=3,
-        title_text="Uur van de dag",
-        showgrid=True,
-        gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-        zeroline=False,
+    set_plotly_title(
+        fig,
+        title="Distributie van chatactiviteit per uur",
+        subtitle=f"Rood markeert extreme uren (top 5%, n={n_extreme})",
     )
-    fig.update_yaxes(
-        showgrid=True,
-        gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-        zeroline=False,
-        title_text="Aantal berichten",
+    style_plotly_xy_axes(
+        fig,
+        x_title="Uur van de dag",
+        y_title="Aantal berichten",
+        x_dtick=3,
     )
 
     if output:
         fig.write_image(str(output))
 
     return fig
+
+
+def plot_chat_activity_weekday_weekend(
+    df: pd.DataFrame,
+    out_path: str | Path = "img/chat_activity_weekday_weekend.png",
+) -> None:
+    """Compare daily activity distribution between weekdays and weekend.
+
+    Uses a dot/strip plot so each day is visible as an individual observation.
+    Median lines per group are drawn as subtle dashed rules.
+
+    :param df: Input dataframe containing ``datetime``.
+    :type df: pd.DataFrame
+    :param out_path: Output path for the rendered image.
+    :type out_path: str | Path
+    :return: None.
+    :rtype: None
+    """
+    if "datetime" not in df.columns:
+        raise KeyError("datetime column not found.")
+
+    out_path = ensure_parent_dir(out_path)
+    working = df.copy()
+    working["datetime"] = pd.to_datetime(working["datetime"], errors="coerce")
+    working = working.dropna(subset=["datetime"])
+    working["date_only"] = working["datetime"].dt.date
+    working["is_weekend"] = working["datetime"].dt.weekday >= 5
+
+    daily = (
+        working.groupby(["date_only", "is_weekend"])
+        .size()
+        .reset_index(name="messages")
+    )
+    weekday = daily.loc[~daily["is_weekend"], "messages"].astype(float).to_numpy()
+    weekend = daily.loc[daily["is_weekend"], "messages"].astype(float).to_numpy()
+    if len(weekday) == 0 or len(weekend) == 0:
+        raise ValueError("Need both weekday and weekend data for comparison.")
+
+    color_weekday = DEFAULT_PLOT_SETTINGS.neutral_color  # "#B0B0B0"
+    color_weekend = DEFAULT_PLOT_SETTINGS.danger_color   # "#C62828"
+
+    median_weekday = float(np.median(weekday))
+    median_weekend = float(np.median(weekend))
+
+    rng = np.random.default_rng(42)
+
+    plt.style.use(DEFAULT_PLOT_SETTINGS.matplotlib_style)
+    fig, ax = plt.subplots(figsize=(8.5, 5.5))
+
+    # --- Dot strip for weekdays (x-position 1) ---
+    jitter_wd = rng.uniform(-0.18, 0.18, size=len(weekday))
+    ax.scatter(
+        1 + jitter_wd,
+        weekday,
+        s=22,
+        color=color_weekday,
+        alpha=0.55,
+        linewidths=0,
+        zorder=3,
+        label="Weekdag",
+    )
+
+    # --- Dot strip for weekend (x-position 2) ---
+    jitter_we = rng.uniform(-0.18, 0.18, size=len(weekend))
+    ax.scatter(
+        2 + jitter_we,
+        weekend,
+        s=22,
+        color=color_weekend,
+        alpha=0.60,
+        linewidths=0,
+        zorder=3,
+        label="Weekend",
+    )
+
+    # --- Median lines (dashed, subtle) ---
+    half_width = 0.30
+    ax.hlines(
+        median_weekday,
+        1 - half_width,
+        1 + half_width,
+        colors="#333333",
+        linewidths=1.6,
+        linestyles="dashed",
+        zorder=4,
+    )
+    ax.hlines(
+        median_weekend,
+        2 - half_width,
+        2 + half_width,
+        colors="#333333",
+        linewidths=1.6,
+        linestyles="dashed",
+        zorder=4,
+    )
+
+    # --- IQR band per group (shaded range between P25 and P75) ---
+    for x_pos, values, color in [
+        (1, weekday, color_weekday),
+        (2, weekend, color_weekend),
+    ]:
+        q25 = float(np.percentile(values, 25))
+        q75 = float(np.percentile(values, 75))
+        ax.fill_betweenx(
+            [q25, q75],
+            x_pos - 0.22,
+            x_pos + 0.22,
+            color=color,
+            alpha=0.12,
+            zorder=1,
+        )
+
+    # --- Annotation: point upward to spread in weekend upper cloud ---
+    q75_wd = float(np.percentile(weekday, 75))
+    q75_we = float(np.percentile(weekend, 75))
+    ax.annotate(
+        "Weekend: bredere spreiding\nin de middelste massa",
+        xy=(2.20, q75_we + 4),
+        xytext=(2.52, q75_we + 18),
+        fontsize=9,
+        color=color_weekend,
+        arrowprops=dict(
+            arrowstyle="->,head_width=0.25,head_length=0.12",
+            color=color_weekend,
+            lw=1.0,
+        ),
+        va="bottom",
+        ha="left",
+    )
+
+    # --- Axes & labels ---
+    ax.set_xticks([1, 2])
+    ax.set_xticklabels(["Weekdagen", "Weekend"], fontsize=11)
+    ax.set_xlim(0.4, 3.1)
+    ax.set_ylabel("Berichten per dag", fontsize=11)
+    ax.set_title(
+        "Weekend laat grotere spreiding in chatactiviteit zien",
+        fontsize=12,
+        fontweight="bold",
+        pad=12,
+    )
+    ax.grid(axis="y", alpha=0.18, color="#D9D9D9")
+    ax.grid(axis="x", visible=False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    # Sample-size footnote
+    ax.text(
+        0.98,
+        0.98,
+        f"n weekdagen={len(weekday)} · n weekend={len(weekend)}  |  streepje = mediaan  |  vlak = IQR",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=8.5,
+        color=DEFAULT_PLOT_SETTINGS.muted_text_color,
+    )
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=DEFAULT_PLOT_SETTINGS.dpi)
+    plt.close(fig)

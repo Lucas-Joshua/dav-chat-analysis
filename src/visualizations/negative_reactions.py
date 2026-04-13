@@ -10,7 +10,7 @@ from src.visualizations._negative_plotters import (
     plot_negative_reaction_diagnostic,
     plot_negative_reaction_scatter,
 )
-from src.visualizations.utils import resolve_output_path
+from src.visualizations.utils import resolve_lesson_output_path
 
 
 def negative_reaction_concentration(df, out_dir: str | Path | None = None) -> None:
@@ -25,7 +25,11 @@ def negative_reaction_concentration(df, out_dir: str | Path | None = None) -> No
     """
     plot_negative_reaction_concentration(
         df,
-        out_path=resolve_output_path(out_dir, "negative_reaction_concentration.png"),
+        out_path=resolve_lesson_output_path(
+            out_dir,
+            "negative_reaction_concentration",
+            "negative_reaction_concentration.png",
+        ),
     )
 
 
@@ -41,7 +45,11 @@ def negative_reaction_diagnostic(df, out_dir: str | Path | None = None) -> None:
     """
     plot_negative_reaction_diagnostic(
         df,
-        out_path=resolve_output_path(out_dir, "negative_reaction_diagnostic.png"),
+        out_path=resolve_lesson_output_path(
+            out_dir,
+            "negative_reaction_diagnostic",
+            "negative_reaction_diagnostic.png",
+        ),
     )
 
 
@@ -57,7 +65,11 @@ def negative_reaction_scatter(df, out_dir: str | Path | None = None) -> None:
     """
     plot_negative_reaction_scatter(
         df,
-        out_path=resolve_output_path(out_dir, "negative_reaction_scatter.png"),
+        out_path=resolve_lesson_output_path(
+            out_dir,
+            "negative_reaction_scatter",
+            "negative_reaction_scatter.png",
+        ),
     )
 
 

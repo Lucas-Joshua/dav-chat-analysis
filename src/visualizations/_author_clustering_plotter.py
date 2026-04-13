@@ -320,7 +320,7 @@ def plot_author_clustering(
         title={
             "text": (
                 f"Schrijfstijl-clusters Storyboard · {method}"
-                f"<br><sup>Karakter-trigrammen · Chunk {chunk_size} tekens · Cosine-afstand · {n_clusters} clusters (K-means)</sup>"
+                f"<br><sup>Karakter-trigrammen · Chunk {chunk_size} tekens · Manhattan-afstand · {n_clusters} clusters (K-means)</sup>"
             ),
             "x": 0.5,
             "xanchor": "center",
@@ -381,16 +381,6 @@ def plot_author_reduction_comparison(
     else:
         all_df["cluster"] = 0
 
-    x_min, x_max = float(all_df["x"].min()), float(all_df["x"].max())
-    y_min, y_max = float(all_df["y"].min()), float(all_df["y"].max())
-    x_center = (x_min + x_max) / 2.0
-    y_center = (y_min + y_max) / 2.0
-    x_span = x_max - x_min
-    y_span = y_max - y_min
-    half_span = max(x_span, y_span) * 0.53 if max(x_span, y_span) > 0 else 1.0
-    xlim = (x_center - half_span, x_center + half_span)
-    ylim = (y_center - half_span, y_center + half_span)
-
     fig, axes = plt.subplots(1, 3, figsize=(12, 8))
     for ax, method_name in zip(axes, ["t-SNE", "UMAP", "PCA"]):
         subset = all_df[all_df["method"] == method_name]
@@ -428,8 +418,14 @@ def plot_author_reduction_comparison(
                 zorder=3,
             )
         ax.set_title(method_name, pad=4, fontsize=11)
-        ax.set_xlim(*xlim)
-        ax.set_ylim(*ylim)
+        x_q05, x_q95 = np.percentile(subset["x"], [5, 95])
+        y_q05, y_q95 = np.percentile(subset["y"], [5, 95])
+        x_center = (x_q05 + x_q95) / 2.0
+        y_center = (y_q05 + y_q95) / 2.0
+        half_span = max(x_q95 - x_q05, y_q95 - y_q05) * 0.62
+        half_span = half_span if half_span > 0 else 1.0
+        ax.set_xlim(x_center - half_span, x_center + half_span)
+        ax.set_ylim(y_center - half_span, y_center + half_span)
         ax.set_xticks([])
         ax.set_yticks([])
         for spine in ax.spines.values():
@@ -441,8 +437,8 @@ def plot_author_reduction_comparison(
         "Elke stip stelt een tekstfragment voor; nabijheid betekent vergelijkbare schrijfstijl. "
         "PCA toont globale structuur, t-SNE lokale verschillen en UMAP zit daartussen. "
         "De overlap suggereert dat schrijfstijl een continu spectrum vormt. "
-        "Zelfs na tuning blijft de data geconcentreerd. "
-        "Alleen onderlinge afstanden zijn betekenisvol."
+        "Hier is bewust 2D gebruikt (niet 3D): de 2D-weergave leest sneller en toont de scheiding beter voor rapportage. "
+        "Alleen onderlinge afstanden binnen hetzelfde paneel zijn betekenisvol."
     )
     fig.text(0.5, 0.03, caption, ha="center", va="bottom", fontsize=10, wrap=True)
     fig.savefig(out_path, dpi=220)

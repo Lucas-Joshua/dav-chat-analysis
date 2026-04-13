@@ -3,7 +3,7 @@
 Implements the approach from MADS-DAV notebook 06.2-modelling.ipynb (cells 40–41):
   1. Concatenate each author's messages and split into fixed-size character chunks.
   2. Represent each chunk as a character-level trigram count vector (CountVectorizer).
-  3. Compute pairwise cosine distances between all chunk vectors.
+  3. Compute pairwise Manhattan distances between all chunk vectors.
   4. Reduce to 3D with PCA or t-SNE for visualisation.
 """
 
@@ -18,7 +18,7 @@ import pandas as pd
 from sklearn.decomposition import PCA
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.manifold import TSNE
-from sklearn.metrics.pairwise import cosine_distances
+from sklearn.metrics.pairwise import manhattan_distances
 
 try:
     import umap  # type: ignore[import-not-found]
@@ -140,22 +140,21 @@ def compute_stylometric_embedding(
     X = np.asarray(vectorizer.fit_transform(texts).todense())
     logger.info("Trigram matrix shape: %s", X.shape)
 
-    dist = cosine_distances(X, X)
+    dist = manhattan_distances(X, X)
 
     if method_key == "PCA":
         reducer = PCA(
             n_components=n_components,
-            random_state=random_state,
             **reducer_kwargs,
         )
         embedding = reducer.fit_transform(dist)
 
     elif method_key in {"tSNE", "UMAP"}:
-        X_input = X
+        X_input = dist
         if pre_pca_dims is not None:
-            pca_dims = min(pre_pca_dims, X.shape[1], len(texts))
-            if pca_dims >= n_components and pca_dims < X.shape[1]:
-                X_input = PCA(n_components=pca_dims, random_state=random_state).fit_transform(X)
+            pca_dims = min(pre_pca_dims, X_input.shape[1], len(texts))
+            if pca_dims >= n_components and pca_dims < X_input.shape[1]:
+                X_input = PCA(n_components=pca_dims).fit_transform(X_input)
 
         if method_key == "tSNE":
             max_perplexity = max(1, len(texts) - 1)
@@ -163,7 +162,7 @@ def compute_stylometric_embedding(
             perplexity = min(default_perplexity, max_perplexity)
             reducer = TSNE(
                 n_components=n_components,
-                metric="cosine",
+                metric="euclidean",
                 init="random",
                 perplexity=perplexity,
                 random_state=random_state,
@@ -178,13 +177,16 @@ def compute_stylometric_embedding(
                 raise ImportError(
                     "UMAP was requested but the 'umap-learn' package is not installed."
                 )
+            umap_kwargs = {
+                "n_neighbors": 5,
+                "min_dist": 0.3,
+                "metric": "euclidean",
+            }
+            umap_kwargs.update(reducer_kwargs)
             reducer = umap.UMAP(
                 n_components=n_components,
-                n_neighbors=5,
-                min_dist=0.3,
                 random_state=random_state,
-                metric="cosine",
-                **reducer_kwargs,
+                **umap_kwargs,
             )
             embedding = reducer.fit_transform(X_input)
             logger.info(

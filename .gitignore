@@ -7,3 +7,5 @@
 !/img/.gitkeep
 /ai_queue.md
 /logs/*
+__pycache__/
+*.py[cod]

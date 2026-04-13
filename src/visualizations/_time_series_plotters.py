@@ -1,29 +1,60 @@
-"""Low-level plot constructors for time-series modeling visualizations (Les 4)."""
+"""Low-level plot constructors for time-series modeling visualizations (Les 3)."""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
+from src.modules.feature_engineering import INCIDENT_BOW_TERMS
 from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
+
+_GRID_COLOR = "#D9D9D9"
+
+
+def _get_incident_windows(df: pd.DataFrame) -> pd.DatetimeIndex:
+    """Return the 15-min window timestamps that contain ≥1 incident message.
+
+    :param df: Dataframe with ``datetime`` and ``message`` columns.
+    :type df: pd.DataFrame
+    :return: DatetimeIndex of incident-window floor timestamps (15-min grid).
+    :rtype: pd.DatetimeIndex
+    """
+    terms = [str(t) for t in INCIDENT_BOW_TERMS]
+    pattern = r"\b(?:{})\b".format(
+        "|".join(re.escape(t).replace(r"\ ", r"\s+") for t in terms)
+    )
+    working = df.copy()
+    working["datetime"] = pd.to_datetime(working["datetime"], errors="coerce")
+    working = working.dropna(subset=["datetime"])
+    working["is_incident"] = (
+        working["message"]
+        .fillna("")
+        .astype(str)
+        .str.contains(pattern, case=False, regex=True)
+    )
+    incident_rows = working[working["is_incident"]].copy()
+    incident_rows["window"] = incident_rows["datetime"].dt.floor("15min")
+    return pd.DatetimeIndex(incident_rows["window"].unique())
 
 
 def plot_time_series_activity(
     df: pd.DataFrame,
     out_path: str | Path = "img/time_series_activity.png",
 ) -> None:
-    """Plot 15-minute-interval chat activity with rolling trend and residuals.
+    """Plot 15-minute chat activity with incident markers and Poisson λ annotation.
 
-    Upper panel shows raw 15-minute message counts (transparent bars) overlaid
-    with a 2-hour rolling-average trend line.  The highest single interval is
-    annotated as a possible incident window.  The lower panel shows the residual
-    (actual − trend) so brief spikes stand out clearly.
+    Upper panel shows raw 15-minute message counts (grey bars) with a 2-hour
+    rolling-average trend line (blue) and vertical red markers at every window
+    that contains ≥1 incident-related message.  The lower panel shows residuals
+    (actual − trend) so brief incident spikes stand out clearly.
 
-    :param df: Processed chat dataframe with a ``datetime`` column.
+    Title is insight-driven: activity measurably increases during incident windows.
+
+    :param df: Processed chat dataframe with ``datetime`` and ``message`` columns.
     :type df: pd.DataFrame
     :param out_path: Destination path for the exported image.
     :type out_path: str | Path
@@ -51,126 +82,86 @@ def plot_time_series_activity(
     rolling = ts.rolling(window=8, center=True, min_periods=1).mean()
     residuals = ts - rolling
 
-    # --- Find actual peak interval ---
+    # --- Poisson λ (overall rate) ---
+    lam_overall = float(ts[ts > 0].mean())
+
+    # --- Detect incident windows ---
+    incident_windows = _get_incident_windows(df)
+    incident_ts = ts.reindex(incident_windows).dropna()
+
+    # λ per incident window vs baseline
+    incident_mask = ts.index.isin(incident_windows)
+    lam_incident = float(ts[incident_mask].mean()) if incident_mask.any() else 0.0
+    lam_baseline = float(ts[~incident_mask & (ts > 0)].mean())
+
+    # --- Find peak interval ---
     peak_dt = ts.idxmax()
     peak_val = int(ts.max())
 
-    primary = DEFAULT_PLOT_SETTINGS.primary_color
     accent = DEFAULT_PLOT_SETTINGS.danger_color
     neutral = DEFAULT_PLOT_SETTINGS.neutral_color
+    primary = DEFAULT_PLOT_SETTINGS.primary_color
 
-    fig = make_subplots(
-        rows=2,
-        cols=1,
-        row_heights=[0.68, 0.32],
-        shared_xaxes=True,
-        vertical_spacing=0.08,
-        subplot_titles=[
-            "15-minuten berichtenactiviteit + rollend gemiddelde (2u)",
-            "Residu (Werkelijk − Trend)",
-        ],
+    plt.style.use(DEFAULT_PLOT_SETTINGS.matplotlib_style)
+    fig, (ax_top, ax_bot) = plt.subplots(
+        2, 1, figsize=(14, 7),
+        gridspec_kw={"height_ratios": [2.2, 1]},
+        sharex=True,
     )
 
-    # Raw counts as faint bars
-    fig.add_trace(
-        go.Bar(
-            x=ts.index,
-            y=ts.values,
-            name="Berichten (15 min)",
-            marker_color=neutral,
-            opacity=0.45,
-            showlegend=True,
-        ),
-        row=1, col=1,
-    )
+    # --- Top: raw bars + rolling trend ---
+    ax_top.bar(ts.index, ts.values, width=0.009, color=neutral, alpha=0.40,
+               label="Berichten per 15 min")
+    ax_top.plot(rolling.index, rolling.values, color=primary, linewidth=1.8,
+                label="Rollend gemiddelde (2u)")
 
-    # Rolling average trend
-    fig.add_trace(
-        go.Scatter(
-            x=rolling.index,
-            y=rolling.values,
-            mode="lines",
-            name="Rollend gemiddelde (2u)",
-            line=dict(color=primary, width=2.5),
-        ),
-        row=1, col=1,
-    )
-
-    # Peak annotation
-    fig.add_annotation(
-        x=peak_dt,
-        y=peak_val,
-        text=f"Piek: {peak_dt.strftime('%d %b %Y %H:%M')} ({peak_val} berichten)",
-        showarrow=True,
-        arrowhead=2,
-        ax=0,
-        ay=-50,
-        font=dict(size=10),
-        row=1, col=1,
-    )
-
-    # Residuals
-    res_colors = [accent if r > 0 else neutral for r in residuals.values]
-    fig.add_trace(
-        go.Bar(
-            x=residuals.index,
-            y=residuals.values,
-            name="Residu",
-            marker_color=res_colors,
-            showlegend=False,
-        ),
-        row=2, col=1,
-    )
-    fig.add_hline(
-        y=0,
-        line_width=1,
-        line_color="rgba(0,0,0,0.3)",
-        row=2, col=1,
-    )
-
-    fig.update_xaxes(
-        showgrid=True,
-        gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-        zeroline=False,
-        title_text="Datum / tijd",
-        row=2, col=1,
-    )
-    fig.update_yaxes(
-        showgrid=True,
-        gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-        zeroline=False,
-        title_text="Berichten",
-        row=1, col=1,
-    )
-    fig.update_yaxes(
-        showgrid=True,
-        gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
-        zeroline=False,
-        title_text="Residu",
-        row=2, col=1,
-    )
-
-    fig.update_layout(
-        DEFAULT_PLOT_SETTINGS.base_plotly_layout(
-            margin={"l": 60, "r": 40, "t": 100, "b": 60},
+    # --- Incident vertical lines ---
+    for inc_dt in incident_windows:
+        ax_top.axvline(inc_dt, color=accent, linewidth=1.0, linestyle=":", alpha=0.80)
+    if len(incident_windows) > 0:
+        ax_top.axvline(  # dummy for legend
+            incident_windows[0], color=accent, linewidth=1.2, linestyle=":",
+            label=f"Incident-venster (n={len(incident_windows)})",
         )
-    )
-    fig.update_layout(
-        title={
-            "text": (
-                "Chat-activiteit over tijd · 15-minuten tijdreeks"
-                f"<br><sup>Berichten per 15 min · {date_min} – {date_max}"
-                " · Trend via rollend gemiddelde (2u)</sup>"
-            ),
-            "x": 0.5,
-            "xanchor": "center",
-        },
-        height=560,
-        legend=dict(orientation="h", y=1.06, x=0.5, xanchor="center"),
-        bargap=0,
+
+    # --- Peak annotation ---
+    ax_top.annotate(
+        f"Piek {peak_dt.strftime('%d %b %H:%M')}\n({peak_val} msg)",
+        xy=(peak_dt, peak_val),
+        xytext=(0, 18), textcoords="offset points",
+        ha="center", fontsize=8.5, color="#333333",
+        arrowprops=dict(arrowstyle="->,head_width=0.25", color="#555555", lw=0.9),
     )
 
-    fig.write_image(str(out_path), scale=2)
+    ax_top.set_ylabel("Berichten per 15 min", fontsize=10)
+    ax_top.set_title(
+        "Chatactiviteit (berichten per 15 min) stijgt meetbaar tijdens incidenten\n"
+        f"m_{{15m}} ~ Pois(λ)  ·  λ_normaal={lam_baseline:.2f}  ·  λ_incident={lam_incident:.2f}"
+        f"  ·  {date_min} – {date_max}",
+        fontsize=11, fontweight="bold", pad=10,
+    )
+    ax_top.legend(fontsize=9, frameon=False, loc="upper left")
+    ax_top.grid(axis="y", alpha=0.18, color=_GRID_COLOR)
+    ax_top.grid(axis="x", visible=False)
+    ax_top.spines["top"].set_visible(False)
+    ax_top.spines["right"].set_visible(False)
+
+    # --- Bottom: residuals ---
+    res_vals = residuals.values
+    bar_colors = [accent if r > 0 else neutral for r in res_vals]
+    ax_bot.bar(residuals.index, res_vals, width=0.009, color=bar_colors, alpha=0.75)
+    ax_bot.axhline(0, color="#333333", linewidth=0.8)
+    ax_bot.set_ylabel("Residu", fontsize=9)
+    ax_bot.set_xlabel("Datum / tijd", fontsize=10)
+    ax_bot.grid(axis="y", alpha=0.15, color=_GRID_COLOR)
+    ax_bot.grid(axis="x", visible=False)
+    ax_bot.spines["top"].set_visible(False)
+    ax_bot.spines["right"].set_visible(False)
+
+    fig.autofmt_xdate(rotation=0, ha="center")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=DEFAULT_PLOT_SETTINGS.dpi)
+    plt.close(fig)
 
 
 def plot_autocorrelation(

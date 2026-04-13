@@ -9,9 +9,154 @@ import matplotlib.dates as mdates
 import numpy as np
 import pandas as pd
 import re
+from scipy import stats
 
 from src.modules.feature_engineering import INCIDENT_BOW_TERMS
 from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
+
+_MATPLOTLIB_GRID_COLOR = "#D9D9D9"
+
+
+def plot_incident_event_study(
+    df: pd.DataFrame,
+    out_path: str | Path = "img/incident_event_study.png",
+    window_minutes: int = 15,
+    lags: int = 8,
+) -> None:
+    """Show average chat activity before, during, and after incident windows.
+
+    For each 15-min window that contains ≥1 incident-BOW message, the
+    surrounding ±``lags`` windows are collected.  The average message count per
+    lag position is plotted as a line with a shaded 95% CI band.  This
+    visualises the coordinated group response to incidents without implying
+    causation.
+
+    :param df: Dataframe with ``datetime`` and ``message`` columns.
+    :type df: pd.DataFrame
+    :param out_path: Output path for the rendered image.
+    :type out_path: str | Path
+    :param window_minutes: Resampling window in minutes (default 15).
+    :type window_minutes: int
+    :param lags: Number of windows before and after to include (default 8 = 2 h).
+    :type lags: int
+    :return: None.
+    :rtype: None
+    """
+    out_path = Path(out_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    pattern = _build_incident_pattern()
+    working = df.copy()
+    working["datetime"] = pd.to_datetime(working["datetime"], errors="coerce")
+    working = working.dropna(subset=["datetime"])
+    working["is_incident"] = (
+        working["message"]
+        .fillna("")
+        .astype(str)
+        .str.contains(pattern, case=False, regex=True)
+    )
+
+    freq = f"{window_minutes}min"
+    ts: pd.Series = working.set_index("datetime").resample(freq).size().rename("count")
+    flag: pd.Series = (
+        working.set_index("datetime")["is_incident"]
+        .resample(freq)
+        .sum()
+        .gt(0)
+    )
+
+    incident_indices = np.where(flag.values)[0]
+
+    if len(incident_indices) == 0:
+        return
+
+    # Collect ±lags windows around each incident
+    profiles: list[np.ndarray] = []
+    n = len(ts)
+    for idx in incident_indices:
+        start = idx - lags
+        end = idx + lags + 1
+        if start < 0 or end > n:
+            continue
+        profiles.append(ts.values[start:end])
+
+    if not profiles:
+        return
+
+    profile_arr = np.array(profiles, dtype=float)
+    mean_profile = profile_arr.mean(axis=0)
+    sem_profile = profile_arr.std(axis=0) / np.sqrt(len(profile_arr))
+    lag_axis = np.arange(-lags, lags + 1)
+    lag_hours = lag_axis * window_minutes / 60
+
+    # Baseline = mean of non-incident windows (lag ≠ 0)
+    baseline = float(ts[~flag].mean())
+    pct_increase = (mean_profile[lags] - baseline) / max(baseline, 1e-9) * 100
+
+    color_line = DEFAULT_PLOT_SETTINGS.danger_color
+    color_base = DEFAULT_PLOT_SETTINGS.neutral_color
+
+    plt.style.use(DEFAULT_PLOT_SETTINGS.matplotlib_style)
+    fig, ax = plt.subplots(figsize=(9, 5))
+
+    # 95% CI band
+    ax.fill_between(
+        lag_hours,
+        mean_profile - 1.96 * sem_profile,
+        mean_profile + 1.96 * sem_profile,
+        alpha=0.18,
+        color=color_line,
+        label="95% CI",
+    )
+
+    # Mean profile
+    ax.plot(
+        lag_hours, mean_profile,
+        color=color_line, linewidth=2.2,
+        marker="o", markersize=4,
+        label=f"Gem. berichten per {window_minutes} min (n={len(profiles)} incidenten)",
+    )
+
+    # Baseline reference
+    ax.axhline(
+        baseline,
+        color=color_base, linewidth=1.4, linestyle="--",
+        label=f"Baseline (normaal) = {baseline:.2f}",
+    )
+
+    # Incident moment marker
+    ax.axvline(0, color=color_line, linewidth=1.8, linestyle=":", alpha=0.8)
+    ax.text(
+        0.02, ax.get_ylim()[1] if ax.get_ylim()[1] > 0 else mean_profile.max(),
+        f"← incident\n+{pct_increase:.0f}% t.o.v. baseline",
+        color=color_line, fontsize=9, va="top",
+        transform=ax.get_xaxis_transform(),
+    )
+
+    ax.set_xlabel(f"Tijd t.o.v. incident (uren, venster = {window_minutes} min)", fontsize=11)
+    ax.set_ylabel("Gemiddeld aantal berichten per venster", fontsize=11)
+    ax.set_title(
+        "Chatactiviteit stijgt gecoördineerd rondom een incident",
+        fontsize=12, fontweight="bold", pad=12,
+    )
+    ax.set_xticks(lag_hours[::2])
+    ax.set_xticklabels([f"{h:+.1f}u" for h in lag_hours[::2]], fontsize=9)
+    ax.legend(fontsize=9, frameon=False, loc="upper left")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.grid(axis="y", alpha=0.18, color=_MATPLOTLIB_GRID_COLOR)
+    ax.grid(axis="x", visible=False)
+
+    ax.text(
+        0.98, 0.02,
+        "Observationeel · geen causaliteit · gemiddeld profiel over alle incidenten",
+        transform=ax.transAxes, ha="right", va="bottom",
+        fontsize=8.5, color=DEFAULT_PLOT_SETTINGS.muted_text_color, style="italic",
+    )
+
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=DEFAULT_PLOT_SETTINGS.dpi)
+    plt.close(fig)
 
 
 def _build_incident_pattern() -> str:
@@ -113,7 +258,7 @@ def plot_incident_discussion_timeline(
     if bool(focus.empty):
         return
 
-    fig, ax = plt.subplots(figsize=(13, 5))
+    fig, ax = plt.subplots(figsize=(14, 5.6))
     total_color = DEFAULT_PLOT_SETTINGS.neutral_color
     incident_color = DEFAULT_PLOT_SETTINGS.danger_color
     incident_text_color = "#8e0000"
@@ -140,7 +285,7 @@ def plot_incident_discussion_timeline(
             zorder=2,
         )
     ax.set_ylabel("Messages / week")
-    ax.grid(axis="y", alpha=0.14, linestyle="-", linewidth=0.7, color=DEFAULT_PLOT_SETTINGS.gridcolor)
+    ax.grid(axis="y", alpha=0.14, linestyle="-", linewidth=0.7, color=_MATPLOTLIB_GRID_COLOR)
     ax.set_axisbelow(True)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -171,14 +316,57 @@ def plot_incident_discussion_timeline(
                     "boxstyle": "round,pad=0.15",
                 },
             )
+    ratio_line = ax.twinx()
+    ratio_line.plot(
+        focus.index,
+        focus["incident_ratio_pct"],
+        color="#7a1a1a",
+        linewidth=1.6,
+        alpha=0.85,
+        marker="o",
+        markersize=3.2,
+        label="Incident ratio (%)",
+        zorder=6,
+    )
+    ratio_line.set_ylabel("Incident ratio (%)", color="#7a1a1a")
+    ratio_line.tick_params(axis="y", colors="#7a1a1a")
+    ratio_line.set_ylim(bottom=0)
 
-    ax.set_title("When Incidents Happen, Chat Activity Increases")
+    date_min = pd.to_datetime(focus.index.min(), errors="coerce")
+    date_max = pd.to_datetime(focus.index.max(), errors="coerce")
+    span_text = (
+        f"{date_min.strftime('%d-%m-%Y')} t/m {date_max.strftime('%d-%m-%Y')}"
+        if bool(pd.notna(date_min)) and bool(pd.notna(date_max))
+        else "gehele periode"
+    )
+    ax.set_title(
+        "Incidentweken vallen samen met hogere groepsactiviteit\n"
+        f"{span_text} · grijs=totale chat · rood=incidentberichten · lijn=incidentratio"
+    )
     ax.set_xlabel("Week")
-    ax.set_ylim(0, 175)
+    y_max = max(
+        float(focus["total_message_count"].max()),
+        float(focus["incident_message_count"].max()) * 2.0,
+    )
+    ax.set_ylim(0, max(25, y_max * 1.12))
 
-    handles = [bars_total, bars_incident]
+    top_incident_weeks = focus[focus["incident_message_count"] > 0].nlargest(
+        3, "incident_message_count"
+    )
+    for week_start, row in top_incident_weeks.iterrows():
+        ax.annotate(
+            f"Topweek: {int(row['incident_message_count'])}",
+            xy=(week_start, row["incident_message_count"]),
+            xytext=(0, 12),
+            textcoords="offset points",
+            ha="center",
+            fontsize=8,
+            color=incident_text_color,
+        )
+
+    handles = [bars_total, bars_incident, ratio_line.lines[0]]
     labels = [h.get_label() for h in handles]
-    ax.legend(handles, labels, frameon=False, loc="upper left", fontsize=9)
+    ax.legend(handles, labels, frameon=False, loc="upper left", fontsize=9, ncol=2)
 
     working = _flag_incident_messages(df)
     incident_msgs = (
@@ -256,21 +444,20 @@ def plot_incident_activity_correlation(
 
     corr = weekly["total_message_count"].corr(weekly["incident_message_count"])
     n_points = len(weekly)
+    p_label = "p n.v.t."
 
-    import math as _math
-    t_stat = corr * _math.sqrt(n_points - 2) / _math.sqrt(max(1 - corr**2, 1e-12))
-    z = abs(t_stat)
-    p_val = 2.0 * (1.0 - 0.5 * (1.0 + _math.erf(z / _math.sqrt(2.0))))
-    p_label = "p < 0.001" if p_val < 0.001 else f"p = {p_val:.3f}"
+    highlight_cutoff = float(weekly["incident_ratio_pct"].quantile(0.9))
+    highlighted = weekly["incident_ratio_pct"] >= highlight_cutoff
 
     fig, ax = plt.subplots(figsize=(7, 6))
+    rng = np.random.default_rng(42)
+    y_jitter = rng.normal(loc=0.0, scale=0.08, size=n_points)
     ax.scatter(
         weekly["total_message_count"],
-        weekly["incident_message_count"],
-        c=weekly["incident_ratio_pct"],
-        cmap="Reds",
-        alpha=0.85,
-        s=38,
+        weekly["incident_message_count"] + y_jitter,
+        c=np.where(highlighted, DEFAULT_PLOT_SETTINGS.danger_color, DEFAULT_PLOT_SETTINGS.neutral_color),
+        alpha=0.65,
+        s=34,
         edgecolors="white",
         linewidths=0.4,
     )
@@ -278,15 +465,21 @@ def plot_incident_activity_correlation(
     x_values = weekly["total_message_count"].astype(float).to_numpy()
     y_values = weekly["incident_message_count"].astype(float).to_numpy()
     if len(x_values) >= 2 and (x_values.max() - x_values.min()) > 0:
-        slope, intercept = np.polyfit(x_values, y_values, 1)
+        reg = stats.linregress(x_values, y_values)
+        slope = float(reg.slope)
+        intercept = float(reg.intercept)
+        p_val = float(reg.pvalue)
+        p_label = "p < 0.001" if p_val < 0.001 else f"p = {p_val:.3f}"
+        info_text = f"n = {n_points}\nr = {corr:.2f}\n{p_label}"
         x_line = pd.Series([x_values.min(), x_values.max()])
         y_line = slope * x_line + intercept
         ax.plot(
             x_line,
             y_line,
-            color="#1f1f1f",
-            linewidth=2.0,
-            alpha=0.9,
+            color="#6d6d6d",
+            linewidth=1.4,
+            linestyle="--",
+            alpha=0.8,
             zorder=4,
         )
         info_text = f"{info_text}\ny = {slope:.3f}x + {intercept:.2f}"
@@ -301,13 +494,26 @@ def plot_incident_activity_correlation(
         color="#333333",
         bbox={"facecolor": "white", "alpha": 0.9, "edgecolor": "#dddddd"},
     )
-    ax.set_title("Busier Weeks Have More Incident Messages (r = 0.55, p < 0.001)")
+    ax.set_title(
+        "Incidentberichten vallen samen met hogere activiteit per week\n"
+        f"Patroon zichtbaar, zonder causaliteitsclaim (r = {corr:.2f}, {p_label})"
+    )
     ax.set_xlabel("Total messages / week")
     ax.set_ylabel("Incident messages / week")
-    ax.grid(alpha=0.15, color=DEFAULT_PLOT_SETTINGS.gridcolor)
+    ax.grid(alpha=0.15, color=_MATPLOTLIB_GRID_COLOR)
     ax.set_axisbelow(True)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+    ax.text(
+        0.02,
+        0.98,
+        "Rood = weken met relatief hoog incidentaandeel (top 10%)",
+        transform=ax.transAxes,
+        ha="left",
+        va="top",
+        fontsize=9,
+        color="#555555",
+    )
 
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)

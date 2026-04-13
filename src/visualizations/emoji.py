@@ -7,11 +7,10 @@ from typing import Any
 
 from src.visualizations._emoji_plotters import (
     plot_emoji_heatmap_png,
-    plot_emoji_type_per_user,
     plot_emoji_usage_by_hour,
     plot_overall_emoji_distribution,
 )
-from src.visualizations.utils import resolve_output_path
+from src.visualizations.utils import resolve_lesson_output_path
 
 
 def overall_emoji_distribution(df, out_dir: str | Path | None = None) -> None:
@@ -26,7 +25,11 @@ def overall_emoji_distribution(df, out_dir: str | Path | None = None) -> None:
     """
     plot_overall_emoji_distribution(
         df,
-        out_path=resolve_output_path(out_dir, "overall_emoji_distribution.png"),
+        out_path=resolve_lesson_output_path(
+            out_dir,
+            "overall_emoji_distribution",
+            "overall_emoji_distribution.png",
+        ),
     )
 
 
@@ -42,23 +45,11 @@ def emoji_heatmap(df, out_dir: str | Path | None = None) -> None:
     """
     plot_emoji_heatmap_png(
         df,
-        out_path=resolve_output_path(out_dir, "emoji_heatmap.png"),
-    )
-
-
-def emoji_type_per_user(df, out_dir: str | Path | None = None) -> None:
-    """Generate the emoji group distribution per user.
-
-    :param df: Processed chat dataframe.
-    :type df: Any
-    :param out_dir: Optional output directory.
-    :type out_dir: str | Path | None
-    :return: None.
-    :rtype: None
-    """
-    plot_emoji_type_per_user(
-        df,
-        out_path=resolve_output_path(out_dir, "emoji_group_distribution.png"),
+        out_path=resolve_lesson_output_path(
+            out_dir,
+            "emoji_heatmap",
+            "emoji_heatmap.png",
+        ),
     )
 
 
@@ -74,13 +65,16 @@ def emoji_usage_by_hour(df, out_dir: str | Path | None = None) -> None:
     """
     plot_emoji_usage_by_hour(
         df,
-        output=Path(resolve_output_path(out_dir, "plot_emoji_usage_by_hour.png")),
+        output=resolve_lesson_output_path(
+            out_dir,
+            "emoji_usage_by_hour",
+            "plot_emoji_usage_by_hour.png",
+        ),
     )
 
 
 REGISTRY = {
     "overall_emoji_distribution": overall_emoji_distribution,
     "emoji_heatmap": emoji_heatmap,
-    "emoji_type_per_user": emoji_type_per_user,
     "emoji_usage_by_hour": emoji_usage_by_hour,
 }

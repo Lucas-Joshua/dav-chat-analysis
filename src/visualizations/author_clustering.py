@@ -1,4 +1,4 @@
-"""Public author-clustering visualization wrappers and registry entries."""
+"""Exploratory author-clustering visualization wrappers and registry entries."""
 
 from __future__ import annotations
 
@@ -17,6 +17,7 @@ from src.visualizations._author_clustering_plotter import (
 from src.visualizations.utils import resolve_output_path
 
 logger = logging.getLogger(__name__)
+LESSON_DIR = "les6"
 
 _CLUSTER_AGE_HINTS = {
     "Cluster 1": "jong-midden mix (ankers: Lucas 20-35, Suzanne eind 30)",
@@ -26,15 +27,21 @@ _CLUSTER_AGE_HINTS = {
 }
 
 _CLUSTER_STORY = {
-    "Cluster 1": "Veel actieve deelnemers met vergelijkbare informele schrijfstijl; ankers lopen van jongvolwassen tot eind 30.",
-    "Cluster 2": "Ook een jongere mix, maar met een andere stijlhandtekening dan cluster 1 (dus leeftijd alleen verklaart het verschil niet).",
-    "Cluster 3": "Relatief oudere ankers en een duidelijk andere stijlgroep; vaak compacter of anders geformuleerd taalgebruik.",
-    "Cluster 4": "Gemengde leeftijden met gedeelde stijlkenmerken; dit cluster laat zien dat stijl en leeftijd niet 1-op-1 samenhangen.",
+    "Cluster 1": "Actieve deelnemers met vergelijkbare informele schrijfstijl; ankers lopen van jongvolwassen tot eind 30.",
+    "Cluster 2": "Ook een jongere mix, met een andere stijlhandtekening dan cluster 1 (leeftijd alleen verklaart het verschil dus niet).",
+    "Cluster 3": "Relatief oudere ankers en een afwijkende stijlgroep; vaak compacter of anders geformuleerd taalgebruik.",
+    "Cluster 4": "Gemengde leeftijden met gedeelde stijlkenmerken; suggereert dat stijl en leeftijd niet 1-op-1 samenhangen.",
 }
 
 
+def _les6_output_path(out_dir: str | Path | None, filename: str) -> str | Path:
+    """Resolve exploratory output under the Les 6 directory."""
+    base = Path(out_dir) if out_dir else Path("img")
+    return resolve_output_path(base / LESSON_DIR, filename)
+
+
 def author_clustering(df, out_dir: str | Path | None = None) -> None:
-    """Generate the author stylometric clustering scatter plot (t-SNE).
+    """Generate exploratory author stylometric clustering scatter (t-SNE).
 
     :param df: Processed chat dataframe with stylometry attributes.
     :type df: Any
@@ -45,14 +52,14 @@ def author_clustering(df, out_dir: str | Path | None = None) -> None:
     """
     plot_author_clustering(
         df,
-        out_path=resolve_output_path(out_dir, "author_clustering.png"),
+        out_path=_les6_output_path(out_dir, "exploratory_author_style_projection_tsne.png"),
         method="tSNE",
     )
     _export_cluster_table(df, out_dir)
 
 
 def author_clustering_pca(df, out_dir: str | Path | None = None) -> None:
-    """Generate the author stylometric clustering scatter plot (PCA).
+    """Generate exploratory author stylometric clustering scatter (PCA).
 
     :param df: Processed chat dataframe with stylometry attributes.
     :type df: Any
@@ -63,13 +70,13 @@ def author_clustering_pca(df, out_dir: str | Path | None = None) -> None:
     """
     plot_author_clustering(
         df,
-        out_path=resolve_output_path(out_dir, "author_clustering_pca.png"),
+        out_path=_les6_output_path(out_dir, "exploratory_author_style_projection_pca.png"),
         method="PCA",
     )
 
 
 def author_clustering_umap(df, out_dir: str | Path | None = None) -> None:
-    """Generate the author stylometric clustering scatter plot (UMAP).
+    """Generate exploratory author stylometric clustering scatter (UMAP).
 
     :param df: Processed chat dataframe with stylometry attributes.
     :type df: Any
@@ -80,13 +87,13 @@ def author_clustering_umap(df, out_dir: str | Path | None = None) -> None:
     """
     plot_author_clustering(
         df,
-        out_path=resolve_output_path(out_dir, "author_clustering_umap.png"),
+        out_path=_les6_output_path(out_dir, "exploratory_author_style_projection_umap.png"),
         method="UMAP",
     )
 
 
 def author_clustering_comparison(df, out_dir: str | Path | None = None) -> None:
-    """Generate a compact comparison plot for t-SNE, UMAP, and PCA.
+    """Generate exploratory comparison plot for t-SNE, UMAP, and PCA.
 
     :param df: Processed chat dataframe with stylometry attributes.
     :type df: Any
@@ -97,7 +104,7 @@ def author_clustering_comparison(df, out_dir: str | Path | None = None) -> None:
     """
     plot_author_reduction_comparison(
         df,
-        out_path=resolve_output_path(out_dir, "author_clustering_comparison.png"),
+        out_path=_les6_output_path(out_dir, "exploratory_author_style_comparison.png"),
     )
 
 
@@ -117,7 +124,7 @@ def umap_parameter_comparison(df, out_dir: str | Path | None = None) -> None:
     """
     plot_umap_parameter_comparison(
         df,
-        out_path=resolve_output_path(out_dir, "umap_parameter_comparison.png"),
+        out_path=_les6_output_path(out_dir, "umap_parameter_comparison.png"),
     )
 
 
@@ -152,7 +159,7 @@ def _export_cluster_table(df, out_dir) -> None:
         })
 
     export_df = pd.DataFrame(rows).sort_values(["cluster", "berichten"], ascending=[True, False])
-    out_path = resolve_output_path(out_dir, "author_clusters.csv")
+    out_path = _les6_output_path(out_dir, "exploratory_author_clusters.csv")
     export_df.to_csv(out_path, index=False)
     logger.info("Cluster table saved to %s", out_path)
     _export_cluster_story(export_df, out_dir)
@@ -169,12 +176,12 @@ def _export_cluster_story(cluster_df: pd.DataFrame, out_dir: str | Path | None =
     :return: None.
     :rtype: None
     """
-    out_path = Path(resolve_output_path(out_dir, "author_cluster_story.md"))
+    out_path = Path(_les6_output_path(out_dir, "exploratory_author_cluster_story.md"))
 
     lines: list[str] = []
     lines.append("# Leeswijzer: Schrijfstijl-clusters")
     lines.append("")
-    lines.append("Deze clusters zijn gebaseerd op schrijfstijl (trigrammen + cosine-afstand), niet direct op leeftijd.")
+    lines.append("Deze clusters zijn gebaseerd op schrijfstijl (trigrammen + Manhattan-afstand), niet direct op leeftijd.")
     lines.append("Leeftijd gebruik je hier als **anker**, niet als harde verklaring.")
     lines.append("")
 
@@ -195,8 +202,8 @@ def _export_cluster_story(cluster_df: pd.DataFrame, out_dir: str | Path | None =
         lines.append("")
 
     lines.append("## Kort verhaal")
-    lines.append("De data laat vier stijlgroepen zien. Cluster 1 (jong-midden mix) en 2 (jongere mix) liggen qua leeftijd deels bij elkaar, maar schrijven verschillend.")
-    lines.append("Cluster 3 heeft een ouder anker en wijkt stijlmatig af. Cluster 4 is gemengd en bevestigt dat stijl ≠ leeftijd.")
+    lines.append("De data suggereert vier stijlgroepen. Cluster 1 (jong-midden mix) en 2 (jongere mix) liggen qua leeftijd deels bij elkaar, maar schrijven verschillend.")
+    lines.append("Cluster 3 heeft een ouder anker en lijkt stijlmatig af te wijken. Cluster 4 is gemengd en ondersteunt dat stijl ≠ leeftijd.")
     lines.append("")
     lines.append("## Let op")
     lines.append("- Dit is een stijlindeling, geen persoonlijkheidsprofiel.")
@@ -218,7 +225,7 @@ def _export_cluster_delivery(cluster_df: pd.DataFrame, out_dir: str | Path | Non
     :return: None.
     :rtype: None
     """
-    out_path = Path(resolve_output_path(out_dir, "author_cluster_delivery.md"))
+    out_path = Path(_les6_output_path(out_dir, "exploratory_author_cluster_delivery.md"))
 
     cluster_stats = (
         cluster_df.groupby("cluster")
@@ -242,7 +249,7 @@ def _export_cluster_delivery(cluster_df: pd.DataFrame, out_dir: str | Path | Non
 
     lines.append("## 2. Wat is geanalyseerd")
     lines.append(f"- Dataset: {total_personen} personen, {total_berichten} berichten")
-    lines.append("- Methode: karaktertrigrammen per tekstchunk, cosine-afstand, daarna clustering")
+    lines.append("- Methode: karaktertrigrammen per tekstchunk, Manhattan-afstand, daarna clustering")
     lines.append("- Visualisatie: punten dicht bij elkaar = vergelijkbare schrijfstijl")
     lines.append("")
 
@@ -262,7 +269,7 @@ def _export_cluster_delivery(cluster_df: pd.DataFrame, out_dir: str | Path | Non
 
     lines.append("## 4. Wat betekent dit inhoudelijk")
     lines.append("- Schrijfstijl in deze groep lijkt door meerdere factoren te worden bepaald (niet alleen leeftijd).")
-    lines.append("- Cluster 3 heeft het duidelijkste oudere anker en wijkt stijlmatig het meest af.")
+    lines.append("- Cluster 3 heeft het sterkste oudere anker en lijkt stijlmatig het meest af te wijken.")
     lines.append("- Cluster 4 is bewust als gemengde mix benoemd: dat voorkomt schijnprecisie.")
     lines.append("")
 
@@ -275,9 +282,9 @@ def _export_cluster_delivery(cluster_df: pd.DataFrame, out_dir: str | Path | Non
     lines.append("## 6. Praattekst (45-60 sec)")
     lines.append(
         "\"Deze grafiek groepeert mensen op schrijfstijl, niet op mening of persoonlijkheid. "
-        "We zien vier duidelijke stijlgroepen. Wat opvalt is dat cluster 1 en 2 qua leeftijd deels overlappen, "
+        "We zien vier mogelijke stijlgroepen. Wat opvalt is dat cluster 1 en 2 qua leeftijd deels overlappen, "
         "maar toch stijlmatig gescheiden zijn. Dat betekent dat leeftijd wel context geeft, maar het verschil niet volledig verklaart. "
-        "Cluster 3 heeft een ouder anker en is taalmatig duidelijk anders. Cluster 4 is een gemengde groep, "
+        "Cluster 3 heeft een ouder anker en lijkt taalmatig anders. Cluster 4 is een gemengde groep, "
         "wat juist laat zien dat schrijfstijl en leeftijd niet één-op-één samenhangen.\""
     )
     lines.append("")

@@ -8,7 +8,7 @@ from src.visualizations._time_series_plotters import (
     plot_autocorrelation,
     plot_time_series_activity,
 )
-from src.visualizations.utils import resolve_output_path
+from src.visualizations.utils import resolve_lesson_output_path
 
 
 def time_series_activity(df, out_dir: str | Path | None = None) -> None:
@@ -23,7 +23,11 @@ def time_series_activity(df, out_dir: str | Path | None = None) -> None:
     """
     plot_time_series_activity(
         df,
-        out_path=resolve_output_path(out_dir, "time_series_activity.png"),
+        out_path=resolve_lesson_output_path(
+            out_dir,
+            "time_series_activity",
+            "time_series_activity.png",
+        ),
     )
 
 
@@ -39,7 +43,11 @@ def time_series_autocorrelation(df, out_dir: str | Path | None = None) -> None:
     """
     plot_autocorrelation(
         df,
-        out_path=resolve_output_path(out_dir, "time_series_autocorrelation.png"),
+        out_path=resolve_lesson_output_path(
+            out_dir,
+            "time_series_autocorrelation",
+            "time_series_autocorrelation.png",
+        ),
     )
 
 
