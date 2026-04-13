@@ -8,6 +8,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 
 from src.modules.feature_engineering import INCIDENT_BOW_TERMS
 from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
@@ -98,6 +99,8 @@ def plot_time_series_activity(
     peak_dt = ts.idxmax()
     peak_val = int(ts.max())
 
+    import matplotlib.patches as mpatches
+
     accent = DEFAULT_PLOT_SETTINGS.danger_color
     neutral = DEFAULT_PLOT_SETTINGS.neutral_color
     primary = DEFAULT_PLOT_SETTINGS.primary_color
@@ -108,6 +111,9 @@ def plot_time_series_activity(
         gridspec_kw={"height_ratios": [2.2, 1]},
         sharex=True,
     )
+    fig.patch.set_facecolor("white")
+    ax_top.set_facecolor("white")
+    ax_bot.set_facecolor("white")
 
     # --- Top: raw bars + rolling trend ---
     ax_top.bar(ts.index, ts.values, width=0.009, color=neutral, alpha=0.40,
@@ -115,32 +121,50 @@ def plot_time_series_activity(
     ax_top.plot(rolling.index, rolling.values, color=primary, linewidth=1.8,
                 label="Rollend gemiddelde (2u)")
 
-    # --- Incident vertical lines ---
+    # --- Incident: filled spans — much more visible than dotted lines ---
+    _span_w = pd.Timedelta("15min")
     for inc_dt in incident_windows:
-        ax_top.axvline(inc_dt, color=accent, linewidth=1.0, linestyle=":", alpha=0.80)
-    if len(incident_windows) > 0:
-        ax_top.axvline(  # dummy for legend
-            incident_windows[0], color=accent, linewidth=1.2, linestyle=":",
-            label=f"Incident-venster (n={len(incident_windows)})",
-        )
+        ax_top.axvspan(inc_dt, inc_dt + _span_w, color=accent, alpha=0.22, linewidth=0)
+    incident_patch = mpatches.Patch(
+        color=accent, alpha=0.55,
+        label=f"Incident-venster (n={len(incident_windows)})",
+    )
 
     # --- Peak annotation ---
     ax_top.annotate(
-        f"Piek {peak_dt.strftime('%d %b %H:%M')}\n({peak_val} msg)",
+        f"Piek {peak_dt.strftime('%d %b %H:%M')}\n({peak_val} berichten)",
         xy=(peak_dt, peak_val),
         xytext=(0, 18), textcoords="offset points",
-        ha="center", fontsize=8.5, color="#333333",
+        ha="center", fontsize=9, color="#333333",
         arrowprops=dict(arrowstyle="->,head_width=0.25", color="#555555", lw=0.9),
     )
 
-    ax_top.set_ylabel("Berichten per 15 min", fontsize=10)
-    ax_top.set_title(
-        "Chatactiviteit (berichten per 15 min) stijgt meetbaar tijdens incidenten\n"
-        f"m_{{15m}} ~ Pois(λ)  ·  λ_normaal={lam_baseline:.2f}  ·  λ_incident={lam_incident:.2f}"
-        f"  ·  {date_min} – {date_max}",
-        fontsize=11, fontweight="bold", pad=10,
+    # --- λ-annotation box (upper right, inside plot) incl. date range ---
+    lambda_text = (
+        f"m\u209c ~ Pois(\u03bb)  \u00b7  {date_min}\u2013{date_max}\n"
+        f"\u03bb normaal\u202f=\u202f{lam_baseline:.2f} bericht/15min\n"
+        f"\u03bb incident\u202f=\u202f{lam_incident:.2f} bericht/15min"
     )
-    ax_top.legend(fontsize=9, frameon=False, loc="upper left")
+    ax_top.text(
+        0.995, 0.97, lambda_text,
+        transform=ax_top.transAxes,
+        ha="right", va="top",
+        fontsize=9.5, color=DEFAULT_PLOT_SETTINGS.text_color,
+        bbox=dict(boxstyle="round,pad=0.45", fc="white", ec="#CCCCCC", lw=0.9),
+        linespacing=1.55,
+        family="monospace",
+    )
+
+    ax_top.set_ylabel("Berichten per 15 min", fontsize=11)
+    ax_top.set_title(
+        "Chatactiviteit piekt zichtbaar bij incidenten",
+        fontsize=12, fontweight="bold", pad=12,
+    )
+    handles, labels_leg = ax_top.get_legend_handles_labels()
+    handles.append(incident_patch)
+    labels_leg.append(incident_patch.get_label())
+    ax_top.legend(handles=handles, labels=labels_leg,
+                  fontsize=9, frameon=False, loc="upper left")
     ax_top.grid(axis="y", alpha=0.18, color=_GRID_COLOR)
     ax_top.grid(axis="x", visible=False)
     ax_top.spines["top"].set_visible(False)
@@ -148,11 +172,11 @@ def plot_time_series_activity(
 
     # --- Bottom: residuals ---
     res_vals = residuals.values
-    bar_colors = [accent if r > 0 else neutral for r in res_vals]
-    ax_bot.bar(residuals.index, res_vals, width=0.009, color=bar_colors, alpha=0.75)
+    bar_colors_res = [accent if r > 0 else neutral for r in res_vals]
+    ax_bot.bar(residuals.index, res_vals, width=0.009, color=bar_colors_res, alpha=0.75)
     ax_bot.axhline(0, color="#333333", linewidth=0.8)
-    ax_bot.set_ylabel("Residu", fontsize=9)
-    ax_bot.set_xlabel("Datum / tijd", fontsize=10)
+    ax_bot.set_ylabel("Residu\n(werkelijk \u2212 trend)", fontsize=9)
+    ax_bot.set_xlabel("Datum / tijd", fontsize=11)
     ax_bot.grid(axis="y", alpha=0.15, color=_GRID_COLOR)
     ax_bot.grid(axis="x", visible=False)
     ax_bot.spines["top"].set_visible(False)

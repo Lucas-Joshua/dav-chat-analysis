@@ -32,8 +32,8 @@ IMG_DIR.mkdir(exist_ok=True)
 LOGS_DIR.mkdir(exist_ok=True)
 
 
-CLEAN_CHAT_CSV = PROCESSED_DIR / "clean_chat.csv"
-CLEAN_CHAT_PARQUET = PROCESSED_DIR / "clean_chat.parquet"
+CLEAN_CHAT_CSV = PROCESSED_DIR / "clean_chat_processed.csv"
+CLEAN_CHAT_PARQUET = PROCESSED_DIR / "clean_chat_processed.parquet"
 METADATA_FILE = PROCESSED_DIR / "metadata.json"
 USER_MAPPING_FILE = PROCESSED_DIR / "user_mapping.csv"
 

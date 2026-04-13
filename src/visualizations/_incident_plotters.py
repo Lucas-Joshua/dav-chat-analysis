@@ -98,45 +98,56 @@ def plot_incident_event_study(
 
     plt.style.use(DEFAULT_PLOT_SETTINGS.matplotlib_style)
     fig, ax = plt.subplots(figsize=(9, 5))
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
 
-    # 95% CI band
+    # 95% CI band — light alpha so the mean line stays dominant
+    ci_lower = np.maximum(mean_profile - 1.96 * sem_profile, 0)
+    ci_upper = mean_profile + 1.96 * sem_profile
     ax.fill_between(
-        lag_hours,
-        mean_profile - 1.96 * sem_profile,
-        mean_profile + 1.96 * sem_profile,
-        alpha=0.18,
-        color=color_line,
-        label="95% CI",
+        lag_hours, ci_lower, ci_upper,
+        alpha=0.10, color=color_line,
+        label="95% betrouwbaarheidsband",
     )
+    # Thin dashed CI borders for reference
+    ax.plot(lag_hours, ci_lower, color=color_line, linewidth=0.6, linestyle="--", alpha=0.35)
+    ax.plot(lag_hours, ci_upper, color=color_line, linewidth=0.6, linestyle="--", alpha=0.35)
 
     # Mean profile
     ax.plot(
         lag_hours, mean_profile,
-        color=color_line, linewidth=2.2,
-        marker="o", markersize=4,
-        label=f"Gem. berichten per {window_minutes} min (n={len(profiles)} incidenten)",
+        color=color_line, linewidth=2.4,
+        marker="o", markersize=5,
+        label=f"Gem. berichten per {window_minutes} min  (n={len(profiles)} incidenten)",
+        zorder=4,
     )
 
     # Baseline reference
     ax.axhline(
         baseline,
-        color=color_base, linewidth=1.4, linestyle="--",
-        label=f"Baseline (normaal) = {baseline:.2f}",
+        color=color_base, linewidth=1.6, linestyle="--",
+        label=f"Baseline (rustige vensters) = {baseline:.2f}",
     )
 
-    # Incident moment marker
-    ax.axvline(0, color=color_line, linewidth=1.8, linestyle=":", alpha=0.8)
-    ax.text(
-        0.02, ax.get_ylim()[1] if ax.get_ylim()[1] > 0 else mean_profile.max(),
-        f"← incident\n+{pct_increase:.0f}% t.o.v. baseline",
-        color=color_line, fontsize=9, va="top",
-        transform=ax.get_xaxis_transform(),
+    # Incident marker + annotation above the peak
+    ax.axvline(0, color=color_line, linewidth=1.8, linestyle=":", alpha=0.85)
+    peak_idx_es = int(np.argmax(mean_profile))
+    peak_lag = lag_hours[peak_idx_es]
+    peak_val_es = float(mean_profile[peak_idx_es])
+    ax.annotate(
+        f"+{pct_increase:.0f}% t.o.v. baseline",
+        xy=(peak_lag, peak_val_es),
+        xytext=(peak_lag + 0.40, peak_val_es * 0.80),
+        fontsize=9.5, fontweight="semibold",
+        color=color_line,
+        arrowprops=dict(arrowstyle="->,head_width=0.25", color=color_line, lw=1.0),
+        bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=color_line, lw=0.7, alpha=0.9),
     )
 
     ax.set_xlabel(f"Tijd t.o.v. incident (uren, venster = {window_minutes} min)", fontsize=11)
-    ax.set_ylabel("Gemiddeld aantal berichten per venster", fontsize=11)
+    ax.set_ylabel("Gem. berichten per venster", fontsize=11)
     ax.set_title(
-        "Chatactiviteit stijgt gecoördineerd rondom een incident",
+        "De groep reageert direct en gecoördineerd op een incident",
         fontsize=12, fontweight="bold", pad=12,
     )
     ax.set_xticks(lag_hours[::2])
@@ -149,7 +160,7 @@ def plot_incident_event_study(
 
     ax.text(
         0.98, 0.02,
-        "Observationeel · geen causaliteit · gemiddeld profiel over alle incidenten",
+        "Observationeel \u00b7 geen causaliteit \u00b7 gemiddeld profiel over alle incidenten",
         transform=ax.transAxes, ha="right", va="bottom",
         fontsize=8.5, color=DEFAULT_PLOT_SETTINGS.muted_text_color, style="italic",
     )

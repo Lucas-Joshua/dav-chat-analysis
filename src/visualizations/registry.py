@@ -66,5 +66,5 @@ def run_selected(
             logger.info("Visualization: %s", name)
             try:
                 registry[name](df, out_dir=out_dir)
-            except (KeyError, ValueError, RuntimeError, OSError):
+            except Exception:
                 logger.exception("Visualization failed: %s", name)

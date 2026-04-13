@@ -59,54 +59,88 @@ def plot_overall_emoji_distribution(
     counts = counts.sort_values("proportion", ascending=False)
     counts["emoji_group_label"] = counts["emoji_group"].map(_EMOJI_GROUP_LABELS).fillna(counts["emoji_group"])
 
-    median_prop = float(counts["proportion"].median())
+    # Per-category colors — match the brand identity from plot_settings
+    _CATEGORY_COLORS = {
+        "Humor":              DEFAULT_PLOT_SETTINGS.emoji_group_colors["humor"],           # geel
+        "Positive":           DEFAULT_PLOT_SETTINGS.emoji_group_colors["positive"],        # groen
+        "Negative reflective": DEFAULT_PLOT_SETTINGS.emoji_group_colors["negative_reflective"],  # rood
+        "Social":             DEFAULT_PLOT_SETTINGS.emoji_group_colors["social"],          # blauw
+    }
+
     top_prop = float(counts["proportion"].max())
-    top_vs_median = top_prop / max(median_prop, 1e-9)
-    highlight_mask = counts["proportion"].eq(top_prop)
+    humor_prop = float(counts.loc[counts["emoji_group_label"] == "Humor", "proportion"].iloc[0]) \
+        if "Humor" in counts["emoji_group_label"].values else top_prop
+    positive_prop = float(counts.loc[counts["emoji_group_label"] == "Positive", "proportion"].iloc[0]) \
+        if "Positive" in counts["emoji_group_label"].values else 0.0
+    humor_plus_positive = humor_prop + positive_prop
 
     plt.style.use(DEFAULT_PLOT_SETTINGS.matplotlib_style)
     fig, ax = plt.subplots(figsize=(10, 5.2))
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
 
-    colors = focus_colors(highlight_mask)
+    bar_colors = [
+        _CATEGORY_COLORS.get(label, DEFAULT_PLOT_SETTINGS.neutral_color)
+        for label in counts["emoji_group_label"]
+    ]
     bars = ax.bar(
         counts["emoji_group_label"],
         counts["proportion"],
-        color=colors,
-        alpha=0.92,
+        color=bar_colors,
+        alpha=0.88,
+        width=0.55,
     )
     for bar, proportion in zip(bars, counts["proportion"]):
         ax.text(
             bar.get_x() + bar.get_width() / 2.0,
-            proportion + 0.01,
+            proportion + 0.012,
             f"{proportion:.1%}",
             ha="center",
             va="bottom",
-            fontsize=10,
+            fontsize=11,
+            fontweight="semibold",
             color=DEFAULT_PLOT_SETTINGS.text_color,
         )
 
-    top_idx = int(counts["proportion"].idxmax())
-    top_label = str(counts.loc[top_idx, "emoji_group_label"])
-    ax.annotate(
-        f"{top_vs_median:.1f}x hoger dan mediaan",
-        xy=(top_label, top_prop),
-        xytext=(12, 18),
-        textcoords="offset points",
-        fontsize=10,
-        color=DEFAULT_PLOT_SETTINGS.danger_color,
-        arrowprops={"arrowstyle": "->", "color": DEFAULT_PLOT_SETTINGS.danger_color, "lw": 1.0},
-    )
+    # Guiding annotation: show that humor + positive = social / light tone
+    if humor_plus_positive > 0:
+        ax.annotate(
+            f"Humor + Positive samen: {humor_plus_positive:.0%}\n"
+            "→ de groep communiceert luchtig, niet informatief",
+            xy=("Positive", positive_prop),
+            xytext=(1.55, top_prop * 0.72),
+            fontsize=9.5,
+            color=DEFAULT_PLOT_SETTINGS.muted_text_color,
+            arrowprops=dict(
+                arrowstyle="->,head_width=0.25",
+                color=DEFAULT_PLOT_SETTINGS.muted_text_color,
+                lw=0.9,
+                connectionstyle="arc3,rad=-0.25",
+            ),
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="#CCCCCC", lw=0.8),
+        )
 
-    fig.suptitle("Verdeling van emoji-categorieën in de chat", fontsize=14, y=0.98)
-    ax.set_title("Aandeel van alle gevonden emoji per categorie", fontsize=11, color=DEFAULT_PLOT_SETTINGS.muted_text_color, pad=8)
-    ax.set_ylabel("Aandeel van alle emoji")
-    ax.set_xlabel("Emoji-categorie")
-    ax.set_ylim(0, max(0.60, float(counts["proportion"].max()) + 0.08))
+    ax.set_title(
+        "Humor domineert de chat — 7 op 10 emoji zijn luchtig of positief",
+        fontsize=13, fontweight="bold", pad=14,
+        color=DEFAULT_PLOT_SETTINGS.text_color,
+    )
+    ax.set_ylabel("Aandeel van alle emoji", fontsize=11)
+    ax.set_xlabel("Emoji-categorie", fontsize=11)
+    ax.set_ylim(0, max(0.60, top_prop + 0.12))
     ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:.0%}"))
-    ax.grid(axis="y", alpha=0.2, color="#D9D9D9")
+    ax.grid(axis="y", alpha=0.18, color="#D9D9D9")
     ax.grid(axis="x", visible=False)
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
+
+    n_total = int(df.shape[0])
+    ax.text(
+        0.98, 0.98,
+        f"n={n_total:,} emoji-berichten".replace(",", "."),
+        transform=ax.transAxes, ha="right", va="top",
+        fontsize=8.5, color=DEFAULT_PLOT_SETTINGS.muted_text_color,
+    )
 
     fig.tight_layout()
     fig.savefig(out_path, dpi=DEFAULT_PLOT_SETTINGS.dpi)

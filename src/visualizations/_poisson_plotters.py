@@ -90,8 +90,9 @@ def plot_poisson_dual_distribution(
     color_incident = DEFAULT_PLOT_SETTINGS.danger_color
 
     max_val = int(max(normal_counts.max(), incident_counts.max() if n_incident else 0))
-    # Cap x-range so the plot stays readable
-    x_max_pmf = min(max_val + 2, int(lam1 * 3 + 20))
+    # Cap x-range: focus on the interesting region — avoid long empty tail
+    x_max_pmf = min(max_val + 2, int(lam1 * 2.8 + 8)) if n_incident > 0 else int(lam0 * 4)
+    x_max_pmf = max(x_max_pmf, int(lam0 * 3))
     x_pmf = np.arange(0, x_max_pmf + 1)
 
     pmf0 = poisson.pmf(x_pmf, lam0) * n_normal
@@ -99,65 +100,76 @@ def plot_poisson_dual_distribution(
 
     plt.style.use(DEFAULT_PLOT_SETTINGS.matplotlib_style)
     fig, ax = plt.subplots(figsize=(9, 5.5))
+    fig.patch.set_facecolor("white")
+    ax.set_facecolor("white")
 
-    # Bin edges covering both distributions
-    bins = np.arange(0, min(max_val + 3, x_max_pmf + 3)) - 0.5
+    # Bin edges covering the capped range
+    bins = np.arange(0, x_max_pmf + 3) - 0.5
 
     ax.hist(
-        normal_counts,
+        normal_counts.clip(upper=x_max_pmf),
         bins=bins,
         color=color_normal,
         alpha=0.55,
-        label=f"Normale dag (n={n_normal}, lam_0={lam0:.1f})",
+        label=f"Normale dag  (n={n_normal}, \u03bb\u2080\u2248{lam0:.1f})",
         density=False,
     )
     if n_incident > 0:
         ax.hist(
-            incident_counts,
+            incident_counts.clip(upper=x_max_pmf),
             bins=bins,
             color=color_incident,
             alpha=0.65,
-            label=f"Incident-dag (n={n_incident}, lam_1={lam1:.1f})",
+            label=f"Incident-dag  (n={n_incident}, \u03bb\u2081\u2248{lam1:.1f})",
             density=False,
         )
 
-    # Poisson fit curves
-    ax.plot(x_pmf, pmf0, color="#555555", linewidth=1.8, linestyle="--",
-            label=f"Pois(lam_0={lam0:.1f})")
+    # Poisson fit curves — solid for clarity
+    ax.plot(x_pmf, pmf0, color="#555555", linewidth=2.0, linestyle="-",
+            label=f"Pois(\u03bb\u2080={lam0:.1f})")
     if n_incident > 0:
-        ax.plot(x_pmf, pmf1, color=color_incident, linewidth=2.0, linestyle="--",
-                label=f"Pois(lam_1={lam1:.1f})")
+        ax.plot(x_pmf, pmf1, color=color_incident, linewidth=2.2, linestyle="-",
+                label=f"Pois(\u03bb\u2081={lam1:.1f})")
 
-    # lambda-shift annotation — point to where the incident PMF peaks
+    # Δλ annotation — prominent
     if n_incident > 0:
         peak_x = int(round(lam1))
-        peak_y = float(pmf1[peak_x]) if peak_x < len(pmf1) else float(pmf1[-1])
+        peak_y = float(pmf1[min(peak_x, len(pmf1) - 1)])
         pct = (lam1 / lam0 - 1) * 100
+        text_x = peak_x + max(6, int((x_max_pmf - peak_x) * 0.30))
+        text_y = peak_y * 2.0
         ax.annotate(
-            f"Delta-lam = {lam1 - lam0:+.1f}\n(+{pct:.0f}% intensiteit)",
+            f"\u0394\u03bb\u202f=\u202f{lam1 - lam0:+.1f}  (+{pct:.0f}%)\n"
+            "incidentdag is 3\u00d7 actiever",
             xy=(peak_x, peak_y),
-            xytext=(peak_x + max(4, int(lam1 * 0.4)), peak_y * 1.4),
+            xytext=(text_x, text_y),
             fontsize=10,
+            fontweight="semibold",
             color=color_incident,
-            arrowprops=dict(arrowstyle="->,head_width=0.3", color=color_incident, lw=1.0),
+            arrowprops=dict(
+                arrowstyle="->,head_width=0.3",
+                color=color_incident, lw=1.1,
+                connectionstyle="arc3,rad=-0.18",
+            ),
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=color_incident, lw=0.8, alpha=0.9),
         )
 
     ax.set_xlabel("Berichten per dag", fontsize=11)
     ax.set_ylabel("Aantal dagen", fontsize=11)
     ax.set_title(
-        "Incident-dagen volgen een hogere Poisson-intensiteit (lam_1 > lam_0)",
+        "Op incidentdagen is de Poisson-intensiteit meer dan 3\u00d7 zo hoog",
         fontsize=12, fontweight="bold", pad=12,
     )
-    ax.legend(fontsize=9, frameon=False)
+    ax.legend(fontsize=9.5, frameon=False, loc="upper right")
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
     ax.grid(axis="y", alpha=0.18, color="#D9D9D9")
     ax.grid(axis="x", visible=False)
 
     ax.text(
-        0.98, 0.98,
-        "m_dag ~ Pois(lam)  |  incident-dag = hogere intensiteit lam",
-        transform=ax.transAxes, ha="right", va="top",
+        0.02, 0.98,
+        "m_dag \u223c Pois(\u03bb)  \u00b7  alleen actieve dagen (n\u22651 bericht)",
+        transform=ax.transAxes, ha="left", va="top",
         fontsize=8.5, color=DEFAULT_PLOT_SETTINGS.muted_text_color,
         style="italic",
     )

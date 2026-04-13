@@ -117,7 +117,8 @@ def _context_scatter(
         fig,
         title=title,
         subtitle=(
-            f"Rood = incident-gerelateerd ({n_incident}) · Grijs = regulier ({n_regular})"
+            f"Rood = incident-gerelateerd ({n_incident}) \u00b7 Grijs = regulier ({n_regular}) "
+            "\u00b7 nabijheid = semantische gelijkenis"
         ),
     )
     fig.update_layout(
@@ -125,18 +126,27 @@ def _context_scatter(
             margin={"l": 50, "r": 30, "t": 95, "b": 50},
         )
     )
-    fig.update_layout(height=520, legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center"))
-    fig.update_xaxes(showgrid=True, gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor, title_text="")
-    fig.update_yaxes(showgrid=True, gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor, title_text="")
+    fig.update_layout(
+        height=520,
+        legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center"),
+    )
+    fig.update_xaxes(showgrid=True, gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor, title_text="t-SNE dimensie 1")
+    fig.update_yaxes(showgrid=True, gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor, title_text="t-SNE dimensie 2")
     fig.add_annotation(
         xref="paper",
         yref="paper",
         x=0.01,
-        y=0.02,
-        text="Geen duidelijke scheiding zichtbaar",
+        y=0.05,
+        text=(
+            "<b>Bevinding:</b> incident-berichten vormen geen apart cluster<br>"
+            "→ de chat-<i>taal</i> verandert niet bij incidenten, alleen het <i>volume</i>"
+        ),
         showarrow=False,
-        font=dict(size=11, color="#5a5a5a"),
+        font=dict(size=11, color="#444444"),
         align="left",
+        bgcolor="rgba(255,255,255,0.85)",
+        bordercolor="#CCCCCC",
+        borderwidth=1,
     )
 
     fig.write_image(str(out_path), scale=2)
@@ -169,7 +179,7 @@ def incident_context_projection(
     out_path = _les6_output_path(out_dir, filename)
     _context_scatter(
         embed_df,
-        title="Incident- en reguliere berichten in gereduceerde ruimte",
+        title="Incident-berichten vormen taalkundig geen aparte groep",
         out_path=out_path,
     )
 

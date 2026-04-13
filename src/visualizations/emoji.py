@@ -48,7 +48,7 @@ def emoji_heatmap(df, out_dir: str | Path | None = None) -> None:
         out_path=resolve_lesson_output_path(
             out_dir,
             "emoji_heatmap",
-            "emoji_heatmap.png",
+            "top_emojis_per_user.png",
         ),
     )
 

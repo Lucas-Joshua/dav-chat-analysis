@@ -91,7 +91,9 @@ De clusterchart past vijf Gestalt-principes toe om de informatie direct leesbaar
 
 - **Les 2:** `img/les2/overall_emoji_distribution.png` en `img/les2/top_emojis_per_user.png`
 - **Les 3:** `img/les3/chat_activity_by_hour.png`
-- **Les 6:** `img/les6/incident_context_projection_tsne.png` (tijdelijke placeholder, nog inhoudelijk te beoordelen)
+- **Les 4:** `img/les4/chat_activity_weekday_weekend.png`, `img/les4/time_series_autocorrelation.png` en `img/les4/poisson_model.png`
+- **Les 5:** `img/les5/incident_discussion_timeline.png` en `img/les5/incident_activity_correlation.png`
+- **Les 6:** `img/les6/incident_context_projection_tsne.png` en `img/les6/incident_context_comparison.png`
 
 ### Korte takeaways per les
 
@@ -99,7 +101,7 @@ De clusterchart past vijf Gestalt-principes toe om de informatie direct leesbaar
 - **Les 3:** De chatactiviteit lijkt vooral in de avond het hoogst, wat een dagritme suggereert.
 - **Les 4:** De verdeling van activiteit is scheef: veel lage waarden en een kleinere groep uitschieters.
 - **Les 5:** Er is een indicatie van een positieve relatie tussen drukke weken en meer incidentberichten.
-- **Les 6:** Incidentcontext lijkt hooguit een lichte verschuiving te geven; overlap blijft zichtbaar. Dit blijft voorlopig een tijdelijke eindplot.
+- **Les 6:** Incidentcontext lijkt hooguit een lichte verschuiving te geven; overlap blijft zichtbaar. De vergelijking over meerdere reductiemethoden ondersteunt dat beeld.
 
 ---
 
@@ -166,6 +168,22 @@ Na uitvoering worden:
 - Logs opgeslagen in `logs/`
 
 Specifieke visualisaties aan- of uitzetten kan via de `VISUALIZATION_SELECTIONS`-dict in `src/pipeline.py`.
+
+---
+
+## Dashboard (nieuw)
+
+Na het draaien van de pipeline kun je een interactief dashboard starten:
+
+```bash
+uv run streamlit run src/dashboard.py
+```
+
+Het dashboard gebruikt `data/processed/clean_chat_processed.csv` en toont:
+- KPI-kaarten (berichten, auteurs, incident- en emoji-berichten)
+- Filters op auteur en datumrange
+- Interactieve visualisatie-selectie (Plotly, inclusief hover op punten/balken)
+- Knop om geselecteerde originele pipeline-visualisaties als PNG te genereren vanuit het dashboard
 
 ---
 

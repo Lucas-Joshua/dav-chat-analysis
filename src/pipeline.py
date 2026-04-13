@@ -25,18 +25,28 @@ from src.visualizations import run_selected
 
 VISUALIZATION_SELECTIONS = {
     "overall_emoji_distribution": True,
+    "emoji_heatmap": True,
     "chat_activity_by_hour": True,
     "chat_activity_weekday_weekend": True,
+    "time_series_autocorrelation": True,
+    "poisson_model": True,
+    "incident_discussion_timeline": True,
     "incident_activity_correlation": True,
     "incident_context_projection": True,
+    "incident_context_comparison": True,
 }
 
 VISUALIZATION_REQUIREMENTS: dict[str, set[str]] = {
     "overall_emoji_distribution": {"emoji_category"},
+    "emoji_heatmap": {"emoji_features"},
     "chat_activity_by_hour": {"time_features"},
     "chat_activity_weekday_weekend": {"time_features"},
-    "incident_activity_correlation": set(),
+    "time_series_autocorrelation": {"time_features"},
+    "poisson_model": {"time_features"},
+    "incident_discussion_timeline": {"incident_bow_features", "time_features"},
+    "incident_activity_correlation": {"incident_bow_features", "time_features"},
     "incident_context_projection": {"incident_bow_features"},
+    "incident_context_comparison": {"incident_bow_features"},
 }
 
 FEATURE_DEPENDENCIES: dict[str, set[str]] = {

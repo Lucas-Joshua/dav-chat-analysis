@@ -91,7 +91,10 @@ def plot_chat_activity_by_hour(
     set_plotly_title(
         fig,
         title="Patroon van chatactiviteit per uur",
-        subtitle=f"Piekuur valt samen met hoogste berichtvolume · {date_min} – {date_max} · percentage = aandeel van totaal aantal berichten",
+        subtitle=(
+            f"{date_min} – {date_max} · rood = piekuur · "
+            "percentage = aandeel van totaal aantal berichten"
+        ),
     )
     fig.update_layout(height=480)
 
