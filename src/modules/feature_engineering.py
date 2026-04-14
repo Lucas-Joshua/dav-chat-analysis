@@ -169,7 +169,7 @@ def add_emoji_category(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Add hour, day name, and date-only columns from datetime.
+    """Add reusable calendar features derived from ``datetime``.
 
     :param df: Input dataframe containing ``datetime``.
     :type df: pd.DataFrame
@@ -192,6 +192,9 @@ def add_time_features(df: pd.DataFrame) -> pd.DataFrame:
     )
     df["date_only"] = datetime_series.map(
         lambda value: value.date() if pd.notna(value) else None
+    )
+    df["is_weekend"] = datetime_series.map(
+        lambda value: bool(value.weekday() >= 5) if pd.notna(value) else None
     )
 
     return df

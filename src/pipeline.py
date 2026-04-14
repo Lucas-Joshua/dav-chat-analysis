@@ -15,29 +15,23 @@ from src.visualizations import run_selected
 
 DEFAULT_VISUALIZATION_SELECTIONS: dict[str, bool] = {
     "overall_emoji_distribution": False,
-    "emoji_heatmap": False,   # removed from output per user request
     "chat_activity_by_hour": True,
     "chat_activity_weekday_weekend": False,
     "time_series_autocorrelation": False,
     "poisson_model": False,
     "incident_discussion_timeline": False,
     "incident_activity_correlation": False,
-    "incident_context_projection": False,
-    "incident_context_comparison": False,
     "incident_context_umap_analysis": False,
 }
 
 VISUALIZATION_FEATURES: dict[str, set[str]] = {
     "overall_emoji_distribution": {"emoji_category"},
-    "emoji_heatmap": {"emoji_features"},
     "chat_activity_by_hour": {"time_features"},
     "chat_activity_weekday_weekend": {"time_features"},
     "time_series_autocorrelation": {"time_features"},
     "poisson_model": {"time_features"},
     "incident_discussion_timeline": {"incident_bow_features", "time_features"},
     "incident_activity_correlation": {"incident_bow_features", "time_features"},
-    "incident_context_projection": {"incident_bow_features"},
-    "incident_context_comparison": {"incident_bow_features"},
     "incident_context_umap_analysis": {"incident_bow_features"},
 }
 

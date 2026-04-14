@@ -3,18 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
 
 import pandas as pd
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
 from src.modules.feature_engineering import add_incident_bow_features
-from src.modules.author_stylometry import compute_stylometric_embedding
 from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
-from src.visualizations.utils import ensure_parent_dir, set_plotly_title
+from src.visualizations.utils import ensure_parent_dir
 
-ContextMethod = Literal["PCA", "tSNE", "UMAP"]
 LESSON_DIR = "les6"
 
 
@@ -77,172 +72,6 @@ def _les6_output_path(
     return ensure_parent_dir(base / LESSON_DIR / filename)
 
 
-def _context_scatter(
-    embed_df: pd.DataFrame,
-    title: str,
-    out_path: str | Path,
-) -> None:
-    """Render a two-group context scatter in reduced space.
-
-    :param embed_df: Embedding dataframe with ``x``, ``y`` and ``incident_related``.
-    :type embed_df: pd.DataFrame
-    :param title: Chart title.
-    :type title: str
-    :param out_path: Output image path.
-    :type out_path: str | Path
-    :return: None.
-    :rtype: None
-    """
-    out_path = ensure_parent_dir(out_path)
-    colors = {True: DEFAULT_PLOT_SETTINGS.danger_color, False: DEFAULT_PLOT_SETTINGS.neutral_color}
-    labels = {True: "Incident-gerelateerd", False: "Regulier"}
-
-    fig = go.Figure()
-    for flag in [False, True]:
-        subset = embed_df[embed_df["incident_related"] == flag]
-        fig.add_trace(
-            go.Scatter(
-                x=subset["x"],
-                y=subset["y"],
-                mode="markers",
-                name=labels[flag],
-                marker=dict(color=colors[flag], size=7, opacity=0.9 if flag else 0.28),
-                hoverinfo="skip",
-            )
-        )
-
-    n_incident = int(embed_df["incident_related"].sum())
-    n_regular = int((~embed_df["incident_related"]).sum())
-    set_plotly_title(
-        fig,
-        title=title,
-        subtitle=(
-            f"Rood = incident-gerelateerd ({n_incident}) \u00b7 Grijs = regulier ({n_regular}) "
-            "\u00b7 nabijheid = semantische gelijkenis"
-        ),
-    )
-    fig.update_layout(
-        DEFAULT_PLOT_SETTINGS.base_plotly_layout(
-            margin={"l": 50, "r": 30, "t": 95, "b": 50},
-        )
-    )
-    fig.update_layout(
-        height=520,
-        legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center"),
-    )
-    fig.update_xaxes(showgrid=True, gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor, title_text="t-SNE dimensie 1")
-    fig.update_yaxes(showgrid=True, gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor, title_text="t-SNE dimensie 2")
-    fig.add_annotation(
-        xref="paper",
-        yref="paper",
-        x=0.01,
-        y=0.05,
-        text=(
-            "<b>Bevinding:</b> incident-berichten vormen geen apart cluster<br>"
-            "→ de chat-<i>taal</i> verandert niet bij incidenten, alleen het <i>volume</i>"
-        ),
-        showarrow=False,
-        font=dict(size=11, color="#444444"),
-        align="left",
-        bgcolor="rgba(255,255,255,0.85)",
-        bordercolor="#CCCCCC",
-        borderwidth=1,
-    )
-
-    fig.write_image(str(out_path), scale=2)
-
-
-def incident_context_projection(
-    df: pd.DataFrame,
-    out_dir: str | Path | None = None,
-    method: ContextMethod = "tSNE",
-) -> None:
-    """Project messages and color by incident-related context.
-
-    :param df: Processed chat dataframe.
-    :type df: pd.DataFrame
-    :param out_dir: Optional output directory.
-    :type out_dir: str | Path | None
-    :param method: Dimensionality-reduction method.
-    :type method: ContextMethod
-    :return: None.
-    :rtype: None
-    """
-    sample = _prepare_context_sample(df)
-    texts = sample["message"].tolist()
-    embedding = compute_stylometric_embedding(texts, method=method, n_components=2)
-    embed_df = pd.DataFrame(
-        {"x": embedding[:, 0], "y": embedding[:, 1], "incident_related": sample["incident_related"]}
-    )
-
-    filename = f"incident_context_projection_{method.lower()}.png"
-    out_path = _les6_output_path(out_dir, filename)
-    _context_scatter(
-        embed_df,
-        title="Incident-berichten vormen taalkundig geen aparte groep",
-        out_path=out_path,
-    )
-
-
-def incident_context_comparison(
-    df: pd.DataFrame,
-    out_dir: str | Path | None = None,
-) -> None:
-    """Optional comparison view across PCA, t-SNE, and UMAP for context labels.
-
-    :param df: Processed chat dataframe.
-    :type df: pd.DataFrame
-    :param out_dir: Optional output directory.
-    :type out_dir: str | Path | None
-    :return: None.
-    :rtype: None
-    """
-    sample = _prepare_context_sample(df)
-    texts = sample["message"].tolist()
-    methods: list[ContextMethod] = ["PCA", "tSNE", "UMAP"]
-    embeddings: dict[str, pd.DataFrame] = {}
-    for method in methods:
-        emb = compute_stylometric_embedding(texts, method=method, n_components=2)
-        embeddings[method] = pd.DataFrame(
-            {"x": emb[:, 0], "y": emb[:, 1], "incident_related": sample["incident_related"]}
-        )
-
-    fig = make_subplots(rows=1, cols=3, subplot_titles=methods, horizontal_spacing=0.08)
-    colors = {True: "#C62828", False: "#4E79A7"}
-
-    for idx, method in enumerate(methods, start=1):
-        for flag in [False, True]:
-            subset = embeddings[method][embeddings[method]["incident_related"] == flag]
-            fig.add_trace(
-                go.Scatter(
-                    x=subset["x"],
-                    y=subset["y"],
-                    mode="markers",
-                    showlegend=idx == 1,
-                    name="Incident" if flag else "Regulier",
-                    marker=dict(color=colors[flag], size=6, opacity=0.65),
-                    hoverinfo="skip",
-                ),
-                row=1,
-                col=idx,
-            )
-        fig.update_xaxes(showticklabels=False, showgrid=False, zeroline=False, row=1, col=idx)
-        fig.update_yaxes(showticklabels=False, showgrid=False, zeroline=False, row=1, col=idx)
-
-    set_plotly_title(
-        fig,
-        title="Incidentcontext in gereduceerde ruimte",
-        subtitle="Ondersteunende vergelijking over reductiemethoden",
-    )
-    fig.update_layout(
-        DEFAULT_PLOT_SETTINGS.base_plotly_layout(
-            margin={"l": 30, "r": 30, "t": 90, "b": 40},
-        )
-    )
-    fig.update_layout(height=420, width=1200, legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center"))
-
-    out_path = _les6_output_path(out_dir, "incident_context_comparison.png")
-    fig.write_image(str(out_path), scale=2)
 
 
 def incident_context_umap_analysis(
@@ -274,15 +103,17 @@ def incident_context_umap_analysis(
     from scipy.stats import gaussian_kde
     from scipy.spatial import ConvexHull
 
+    import umap as umap_lib  # type: ignore[import-not-found]
+    from sklearn.feature_extraction.text import TfidfVectorizer
+
     sample = _prepare_context_sample(df, max_points=1600)
     texts = sample["message"].tolist()
-    emb = compute_stylometric_embedding(
-        texts,
-        method="UMAP",
-        n_components=2,
-        n_neighbors=15,
-        min_dist=0.10,
-    )
+
+    vectorizer = TfidfVectorizer(max_features=500, min_df=2, sublinear_tf=True)
+    X = vectorizer.fit_transform(texts).toarray()
+
+    reducer = umap_lib.UMAP(n_components=2, n_neighbors=15, min_dist=0.10, random_state=42)
+    emb = reducer.fit_transform(X)
     x = emb[:, 0]
     y = emb[:, 1]
     is_incident = sample["incident_related"].to_numpy()
@@ -389,7 +220,5 @@ def incident_context_umap_analysis(
 
 
 REGISTRY = {
-    "incident_context_projection": incident_context_projection,
-    "incident_context_comparison": incident_context_comparison,
     "incident_context_umap_analysis": incident_context_umap_analysis,
 }

@@ -20,7 +20,6 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src import config
-from src.modules.author_stylometry import compute_stylometric_embedding
 from src.visualizations.registry import _load_registry, run_selected
 
 NAVY = "#0B2545"
@@ -427,7 +426,11 @@ def _plot_poisson_model(df: pd.DataFrame) -> go.Figure:
     return _style_figure(fig)
 
 
-def _plot_incident_context_projection(df: pd.DataFrame, method: str) -> go.Figure:
+def _plot_incident_context_projection(df: pd.DataFrame, method: str = "UMAP") -> go.Figure:
+    """Project messages into 2D using TF-IDF + UMAP and color by incident label."""
+    import umap as umap_lib  # type: ignore[import-not-found]
+    from sklearn.feature_extraction.text import TfidfVectorizer
+
     sample = df[["message", "is_incident_message"]].dropna(subset=["message"]).copy()
     sample["message"] = sample["message"].astype(str).str.strip()
     sample = sample[sample["message"].str.len() >= 8]
@@ -443,15 +446,16 @@ def _plot_incident_context_projection(df: pd.DataFrame, method: str) -> go.Figur
         ],
         ignore_index=True,
     ).sample(frac=1.0, random_state=42)
-    embedding = compute_stylometric_embedding(
-        balanced["message"].tolist(),
-        method=method,
-        n_components=2,
-    )
+
+    vectorizer = TfidfVectorizer(max_features=500, min_df=2, sublinear_tf=True)
+    X = vectorizer.fit_transform(balanced["message"].tolist()).toarray()
+    reducer = umap_lib.UMAP(n_components=2, n_neighbors=15, min_dist=0.10, random_state=42)
+    emb = reducer.fit_transform(X)
+
     embed_df = pd.DataFrame(
         {
-            "x": embedding[:, 0],
-            "y": embedding[:, 1],
+            "x": emb[:, 0],
+            "y": emb[:, 1],
             "incident_related": balanced["is_incident_message"].eq(1),
         }
     )
@@ -461,7 +465,7 @@ def _plot_incident_context_projection(df: pd.DataFrame, method: str) -> go.Figur
         y="y",
         color="incident_related",
         color_discrete_map={False: SKY, True: INCIDENT},
-        title=f"Incident-context projectie ({method})",
+        title="Incident-context projectie (UMAP)",
         labels={"incident_related": "Incident-gerelateerd"},
         hover_data={"x": ":.3f", "y": ":.3f"},
     )

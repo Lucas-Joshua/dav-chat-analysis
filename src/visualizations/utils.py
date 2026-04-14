@@ -13,7 +13,6 @@ from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
 VISUALIZATION_LESSON_MAP: dict[str, str] = {
     # Les 2: category/comparison
     "overall_emoji_distribution": "les2",
-    "emoji_heatmap": "les2",
     # Les 3: time
     "chat_activity_by_hour": "les3",
     "emoji_usage_by_hour": "les3",
