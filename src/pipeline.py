@@ -15,7 +15,7 @@ from src.visualizations import run_selected
 
 DEFAULT_VISUALIZATION_SELECTIONS: dict[str, bool] = {
     "overall_emoji_distribution": True,
-    "emoji_heatmap": True,
+    "emoji_heatmap": False,   # removed from output per user request
     "chat_activity_by_hour": True,
     "chat_activity_weekday_weekend": True,
     "time_series_autocorrelation": True,
@@ -24,6 +24,7 @@ DEFAULT_VISUALIZATION_SELECTIONS: dict[str, bool] = {
     "incident_activity_correlation": True,
     "incident_context_projection": True,
     "incident_context_comparison": True,
+    "incident_context_umap_analysis": True,
 }
 
 VISUALIZATION_FEATURES: dict[str, set[str]] = {
@@ -37,6 +38,7 @@ VISUALIZATION_FEATURES: dict[str, set[str]] = {
     "incident_activity_correlation": {"incident_bow_features", "time_features"},
     "incident_context_projection": {"incident_bow_features"},
     "incident_context_comparison": {"incident_bow_features"},
+    "incident_context_umap_analysis": {"incident_bow_features"},
 }
 
 

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from pathlib import Path
-from typing import Optional
+from typing import Any, Generator, Optional
 
 import pandas as pd
 
@@ -222,3 +223,66 @@ def style_plotly_xy_axes(
         gridcolor=DEFAULT_PLOT_SETTINGS.gridcolor,
         zeroline=False,
     )
+
+
+# ---------------------------------------------------------------------------
+# Generic figure helpers  (Gestalt: Similarity — one save pattern everywhere)
+# ---------------------------------------------------------------------------
+
+@contextmanager
+def mpl_figure(
+    out_path: str | Path,
+    figsize: tuple[float, float],
+    **subplots_kwargs: Any,
+) -> Generator[tuple[Any, Any], None, None]:
+    """Context manager that creates, styles, saves, and closes a Matplotlib figure.
+
+    Applies ``DEFAULT_PLOT_SETTINGS.matplotlib_style`` and ``rcParams`` once,
+    then yields ``(fig, axes)`` to the caller.  On exit it calls
+    ``tight_layout()``, ``savefig()`` and ``close()`` automatically —
+    even when an exception occurs (``finally`` guard).
+
+    Usage::
+
+        with mpl_figure("img/chart.png", (9, 5)) as (fig, ax):
+            ax.bar(x, y)
+            ax.set_title("My chart")
+
+    :param out_path: Destination image path (parent directories are created).
+    :type out_path: str | Path
+    :param figsize: ``(width, height)`` in inches passed to ``plt.subplots``.
+    :type figsize: tuple[float, float]
+    :param subplots_kwargs: Extra keyword arguments forwarded to ``plt.subplots``
+        (e.g. ``nrows=2``, ``gridspec_kw={…}``).
+    :type subplots_kwargs: Any
+    :return: Generator yielding ``(fig, axes)`` as returned by ``plt.subplots``.
+    :rtype: Generator[tuple[Any, Any], None, None]
+    """
+    import matplotlib.pyplot as plt
+
+    plt.style.use(DEFAULT_PLOT_SETTINGS.matplotlib_style)
+    DEFAULT_PLOT_SETTINGS.apply_matplotlib_rcparams()
+    fig, axes = plt.subplots(figsize=figsize, **subplots_kwargs)
+    try:
+        yield fig, axes
+        fig.tight_layout()
+        fig.savefig(ensure_parent_dir(out_path), dpi=DEFAULT_PLOT_SETTINGS.dpi)
+    finally:
+        plt.close(fig)
+
+
+def save_plotly_fig(fig: Any, out_path: str | Path, scale: int = 2) -> None:
+    """Save a Plotly figure to disk as a raster image.
+
+    Ensures the parent directory exists before writing.
+
+    :param fig: Plotly figure object to export.
+    :type fig: Any
+    :param out_path: Destination image path.
+    :type out_path: str | Path
+    :param scale: Pixel-density multiplier (default 2 for retina-quality output).
+    :type scale: int
+    :return: None.
+    :rtype: None
+    """
+    fig.write_image(str(ensure_parent_dir(out_path)), scale=scale)

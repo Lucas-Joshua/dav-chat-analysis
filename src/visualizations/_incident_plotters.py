@@ -269,79 +269,60 @@ def plot_incident_discussion_timeline(
     if bool(focus.empty):
         return
 
+    plt.style.use(DEFAULT_PLOT_SETTINGS.matplotlib_style)
+    DEFAULT_PLOT_SETTINGS.apply_matplotlib_rcparams()
+
     fig, ax = plt.subplots(figsize=(14, 5.6))
     total_color = DEFAULT_PLOT_SETTINGS.neutral_color
     incident_color = DEFAULT_PLOT_SETTINGS.danger_color
     incident_text_color = "#8e0000"
 
+    # --- Background total activity bars ---
     bars_total = ax.bar(
         focus.index,
         focus["total_message_count"],
         color=total_color,
-        alpha=0.55,
+        alpha=0.50,
         width=6.4,
         zorder=1,
-        label="Total messages / week",
+        label="Totale berichten / week",
     )
-    incident_week_mask = focus["incident_message_count"] > 0
-    if bool(incident_week_mask.any()):
-        ax.bar(
-            focus.index[incident_week_mask],
-            focus.loc[incident_week_mask, "total_message_count"],
-            width=6.4,
-            facecolor="none",
-            edgecolor="#3f444a",
-            linewidth=0.6,
-            alpha=0.7,
-            zorder=2,
-        )
-    ax.set_ylabel("Messages / week")
-    ax.grid(axis="y", alpha=0.14, linestyle="-", linewidth=0.7, color=_MATPLOTLIB_GRID_COLOR)
-    ax.set_axisbelow(True)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
 
+    # --- Incident volume bars (overlaid, narrower) ---
     bars_incident = ax.bar(
         focus.index,
         focus["incident_message_count"],
         color=incident_color,
-        width=3.8,
+        alpha=0.85,
+        width=4.0,
         zorder=4,
-        label="Incident messages / week",
+        label="Incidentberichten / week",
     )
-    for x, cnt in zip(focus.index, focus["incident_message_count"]):
-        if cnt > 0:
-            ax.text(
-                x,
-                cnt + 0.8,
-                f"{int(cnt)}",
-                ha="center",
-                va="bottom",
-                fontsize=8,
-                color=incident_text_color,
-                zorder=5,
-                bbox={
-                    "facecolor": "white",
-                    "edgecolor": "none",
-                    "alpha": 0.9,
-                    "boxstyle": "round,pad=0.15",
-                },
-            )
+
+    ax.set_ylabel("Berichten / week")
+    ax.yaxis.grid(True)
+    ax.xaxis.grid(False)
+    ax.set_axisbelow(True)
+
+    # --- Incident ratio on secondary y-axis ---
     ratio_line = ax.twinx()
     ratio_line.plot(
         focus.index,
         focus["incident_ratio_pct"],
-        color="#7a1a1a",
-        linewidth=1.6,
-        alpha=0.85,
+        color=incident_text_color,
+        linewidth=1.8,
+        alpha=0.80,
         marker="o",
-        markersize=3.2,
-        label="Incident ratio (%)",
+        markersize=3.5,
+        label="Incidentratio (%)",
         zorder=6,
     )
-    ratio_line.set_ylabel("Incident ratio (%)", color="#7a1a1a")
-    ratio_line.tick_params(axis="y", colors="#7a1a1a")
+    ratio_line.set_ylabel("Incidentratio (%)", color=incident_text_color,
+                          fontsize=DEFAULT_PLOT_SETTINGS.axis_label_fontsize)
+    ratio_line.tick_params(axis="y", colors=incident_text_color,
+                           labelsize=DEFAULT_PLOT_SETTINGS.tick_fontsize)
     ratio_line.set_ylim(bottom=0)
+    ratio_line.spines["top"].set_visible(False)
 
     date_min = pd.to_datetime(focus.index.min(), errors="coerce")
     date_max = pd.to_datetime(focus.index.max(), errors="coerce")
@@ -361,23 +342,10 @@ def plot_incident_discussion_timeline(
     )
     ax.set_ylim(0, max(25, y_max * 1.12))
 
-    top_incident_weeks = focus[focus["incident_message_count"] > 0].nlargest(
-        3, "incident_message_count"
-    )
-    for week_start, row in top_incident_weeks.iterrows():
-        ax.annotate(
-            f"Topweek: {int(row['incident_message_count'])}",
-            xy=(week_start, row["incident_message_count"]),
-            xytext=(0, 12),
-            textcoords="offset points",
-            ha="center",
-            fontsize=8,
-            color=incident_text_color,
-        )
-
     handles = [bars_total, bars_incident, ratio_line.lines[0]]
     labels = [h.get_label() for h in handles]
-    ax.legend(handles, labels, frameon=False, loc="upper left", fontsize=9, ncol=2)
+    ax.legend(handles, labels, frameon=False, loc="upper left",
+              fontsize=DEFAULT_PLOT_SETTINGS.legend_fontsize, ncol=3)
 
     working = _flag_incident_messages(df)
     incident_msgs = (
@@ -460,6 +428,9 @@ def plot_incident_activity_correlation(
     highlight_cutoff = float(weekly["incident_ratio_pct"].quantile(0.9))
     highlighted = weekly["incident_ratio_pct"] >= highlight_cutoff
 
+    plt.style.use(DEFAULT_PLOT_SETTINGS.matplotlib_style)
+    DEFAULT_PLOT_SETTINGS.apply_matplotlib_rcparams()
+
     fig, ax = plt.subplots(figsize=(7, 6))
     rng = np.random.default_rng(42)
     y_jitter = rng.normal(loc=0.0, scale=0.08, size=n_points)
@@ -467,10 +438,11 @@ def plot_incident_activity_correlation(
         weekly["total_message_count"],
         weekly["incident_message_count"] + y_jitter,
         c=np.where(highlighted, DEFAULT_PLOT_SETTINGS.danger_color, DEFAULT_PLOT_SETTINGS.neutral_color),
-        alpha=0.65,
-        s=34,
+        alpha=0.70,
+        s=55,
         edgecolors="white",
-        linewidths=0.4,
+        linewidths=0.6,
+        zorder=3,
     )
     info_text = f"n = {n_points}\nr = {corr:.2f}\n{p_label}"
     x_values = weekly["total_message_count"].astype(float).to_numpy()
@@ -487,10 +459,10 @@ def plot_incident_activity_correlation(
         ax.plot(
             x_line,
             y_line,
-            color="#6d6d6d",
-            linewidth=1.4,
+            color="#777777",
+            linewidth=1.6,
             linestyle="--",
-            alpha=0.8,
+            alpha=0.85,
             zorder=4,
         )
         info_text = f"{info_text}\ny = {slope:.3f}x + {intercept:.2f}"
@@ -501,20 +473,17 @@ def plot_incident_activity_correlation(
         transform=ax.transAxes,
         ha="right",
         va="top",
-        fontsize=9,
-        color="#333333",
-        bbox={"facecolor": "white", "alpha": 0.9, "edgecolor": "#dddddd"},
+        fontsize=DEFAULT_PLOT_SETTINGS.annotation_fontsize,
+        color=DEFAULT_PLOT_SETTINGS.text_color,
+        bbox=DEFAULT_PLOT_SETTINGS.annotation_box,
     )
     ax.set_title(
         "Incidentberichten vallen samen met hogere activiteit per week\n"
         f"Patroon zichtbaar, zonder causaliteitsclaim (r = {corr:.2f}, {p_label})"
     )
-    ax.set_xlabel("Total messages / week")
-    ax.set_ylabel("Incident messages / week")
-    ax.grid(alpha=0.15, color=_MATPLOTLIB_GRID_COLOR)
+    ax.set_xlabel("Totale berichten / week")
+    ax.set_ylabel("Incidentberichten / week")
     ax.set_axisbelow(True)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
     ax.text(
         0.02,
         0.98,
@@ -522,8 +491,8 @@ def plot_incident_activity_correlation(
         transform=ax.transAxes,
         ha="left",
         va="top",
-        fontsize=9,
-        color="#555555",
+        fontsize=DEFAULT_PLOT_SETTINGS.caption_fontsize,
+        color=DEFAULT_PLOT_SETTINGS.muted_text_color,
     )
 
     out_path = Path(out_path)

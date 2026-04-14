@@ -237,33 +237,46 @@ def plot_autocorrelation(
         for a in acf
     ]
 
+    # Bar width = 0.20 h (slightly narrower than the 0.25 h interval) so bars
+    # have a small gap between them — Gestalt proximity: each lag is distinct
+    bar_width = 0.20
+
     fig = go.Figure()
 
     fig.add_trace(
         go.Bar(
             x=lag_hours,
             y=acf,
+            width=bar_width,
             marker_color=bar_colors,
             showlegend=False,
         )
     )
 
-    # Significance bounds
+    # Significance bounds — no inline annotation to avoid overlap with bars
     fig.add_hline(
         y=sig_bound,
         line_dash="dash",
-        line_color="rgba(0,0,0,0.45)",
+        line_color="rgba(0,0,0,0.40)",
         line_width=1.4,
-        annotation_text="95% grens",
-        annotation_position="top right",
     )
     fig.add_hline(
         y=-sig_bound,
         line_dash="dash",
-        line_color="rgba(0,0,0,0.45)",
+        line_color="rgba(0,0,0,0.40)",
         line_width=1.4,
     )
-    fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.2)")
+    fig.add_hline(y=0, line_width=1, line_color="rgba(0,0,0,0.25)")
+
+    # Label the 95% bounds as a standalone annotation in the empty upper region
+    fig.add_annotation(
+        x=12,           # midpoint of x-axis (hours)
+        y=sig_bound + 0.06,
+        text="± 95% significantiegrens",
+        showarrow=False,
+        font=dict(size=10, color="rgba(0,0,0,0.50)"),
+        xanchor="center",
+    )
 
     fig.update_xaxes(
         title_text="Vertraging (uren)",
@@ -272,6 +285,7 @@ def plot_autocorrelation(
         zeroline=False,
         tickvals=list(range(0, 25, 4)),
         ticktext=[f"{h}u" for h in range(0, 25, 4)],
+        range=[-0.3, 24.3],
     )
     fig.update_yaxes(
         title_text="Autocorrelatie",
@@ -283,7 +297,7 @@ def plot_autocorrelation(
 
     fig.update_layout(
         DEFAULT_PLOT_SETTINGS.base_plotly_layout(
-            margin={"l": 60, "r": 60, "t": 90, "b": 60},
+            margin={"l": 65, "r": 70, "t": 95, "b": 65},
         )
     )
     fig.update_layout(
@@ -296,7 +310,8 @@ def plot_autocorrelation(
             "x": 0.5,
             "xanchor": "center",
         },
-        height=420,
+        height=450,
+        bargap=0,
     )
 
     fig.write_image(str(out_path), scale=2)

@@ -144,53 +144,54 @@ def plot_chat_activity_weekday_weekend(
     rng = np.random.default_rng(42)
 
     plt.style.use(DEFAULT_PLOT_SETTINGS.matplotlib_style)
+    DEFAULT_PLOT_SETTINGS.apply_matplotlib_rcparams()
     fig, ax = plt.subplots(figsize=(8.5, 5.5))
 
     # --- Dot strip for weekdays (x-position 1) ---
-    jitter_wd = rng.uniform(-0.18, 0.18, size=len(weekday))
+    jitter_wd = rng.uniform(-0.22, 0.22, size=len(weekday))
     ax.scatter(
         1 + jitter_wd,
         weekday,
-        s=22,
+        s=48,
         color=color_weekday,
-        alpha=0.55,
+        alpha=0.60,
         linewidths=0,
         zorder=3,
         label="Weekdag",
     )
 
     # --- Dot strip for weekend (x-position 2) ---
-    jitter_we = rng.uniform(-0.18, 0.18, size=len(weekend))
+    jitter_we = rng.uniform(-0.22, 0.22, size=len(weekend))
     ax.scatter(
         2 + jitter_we,
         weekend,
-        s=22,
+        s=48,
         color=color_weekend,
-        alpha=0.60,
+        alpha=0.65,
         linewidths=0,
         zorder=3,
         label="Weekend",
     )
 
-    # --- Median lines (dashed, subtle) ---
-    half_width = 0.30
+    # --- Median lines (solid, prominent) ---
+    half_width = 0.32
     ax.hlines(
         median_weekday,
         1 - half_width,
         1 + half_width,
-        colors="#333333",
-        linewidths=1.6,
-        linestyles="dashed",
-        zorder=4,
+        colors=DEFAULT_PLOT_SETTINGS.text_color,
+        linewidths=2.0,
+        linestyles="solid",
+        zorder=5,
     )
     ax.hlines(
         median_weekend,
         2 - half_width,
         2 + half_width,
-        colors="#333333",
-        linewidths=1.6,
-        linestyles="dashed",
-        zorder=4,
+        colors=DEFAULT_PLOT_SETTINGS.text_color,
+        linewidths=2.0,
+        linestyles="solid",
+        zorder=5,
     )
 
     # --- IQR band per group (shaded range between P25 and P75) ---
@@ -202,10 +203,10 @@ def plot_chat_activity_weekday_weekend(
         q75 = float(np.percentile(values, 75))
         ax.fill_betweenx(
             [q25, q75],
-            x_pos - 0.22,
-            x_pos + 0.22,
+            x_pos - 0.26,
+            x_pos + 0.26,
             color=color,
-            alpha=0.12,
+            alpha=0.14,
             zorder=1,
         )
 
@@ -213,9 +214,9 @@ def plot_chat_activity_weekday_weekend(
     q75_we = float(np.percentile(weekend, 75))
     ax.annotate(
         "Weekend: bredere spreiding\nin de middelste massa",
-        xy=(2.20, q75_we + 4),
-        xytext=(2.52, q75_we + 18),
-        fontsize=9,
+        xy=(2.24, q75_we + 4),
+        xytext=(2.56, q75_we + 18),
+        fontsize=DEFAULT_PLOT_SETTINGS.annotation_fontsize,
         color=color_weekend,
         arrowprops=dict(
             arrowstyle="->,head_width=0.25,head_length=0.12",
@@ -224,33 +225,27 @@ def plot_chat_activity_weekday_weekend(
         ),
         va="bottom",
         ha="left",
+        bbox=DEFAULT_PLOT_SETTINGS.annotation_box,
     )
 
     # --- Axes & labels ---
     ax.set_xticks([1, 2])
-    ax.set_xticklabels(["Weekdagen", "Weekend"], fontsize=11)
+    ax.set_xticklabels(["Weekdagen", "Weekend"], fontsize=DEFAULT_PLOT_SETTINGS.axis_label_fontsize)
     ax.set_xlim(0.4, 3.1)
-    ax.set_ylabel("Berichten per dag", fontsize=11)
-    ax.set_title(
-        "Weekend laat grotere spreiding in chatactiviteit zien",
-        fontsize=12,
-        fontweight="bold",
-        pad=12,
-    )
-    ax.grid(axis="y", alpha=0.18, color="#D9D9D9")
-    ax.grid(axis="x", visible=False)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+    ax.set_ylabel("Berichten per dag")
+    ax.set_title("Weekend laat grotere spreiding in chatactiviteit zien")
+    ax.yaxis.grid(True)
+    ax.xaxis.grid(False)
 
     # Sample-size footnote
     ax.text(
         0.98,
         0.98,
-        f"n weekdagen={len(weekday)} · n weekend={len(weekend)}  |  streepje = mediaan  |  vlak = IQR",
+        f"n weekdagen={len(weekday)} · n weekend={len(weekend)}  |  lijn = mediaan  |  vlak = IQR",
         transform=ax.transAxes,
         ha="right",
         va="top",
-        fontsize=8.5,
+        fontsize=DEFAULT_PLOT_SETTINGS.caption_fontsize,
         color=DEFAULT_PLOT_SETTINGS.muted_text_color,
     )
 

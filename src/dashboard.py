@@ -275,33 +275,6 @@ def _plot_emoji_usage_by_hour(df: pd.DataFrame) -> go.Figure:
     return _style_figure(fig)
 
 
-def _plot_negative_reaction_scatter(df: pd.DataFrame) -> go.Figure:
-    exploded = df.explode("emoji_list").dropna(subset=["emoji_list"])
-    if exploded.empty:
-        raise ValueError("Geen emoji-data beschikbaar voor deze visualisatie.")
-    total = exploded.groupby("sender").size().rename("total_emoji")
-    negative = (
-        exploded[exploded["emoji_group"] == "negative_reflective"]
-        .groupby("sender")
-        .size()
-        .rename("negative_emoji")
-    )
-    stats = pd.concat([total, negative], axis=1).fillna(0)
-    stats["ratio"] = stats["negative_emoji"] / stats["total_emoji"].replace(0, pd.NA)
-    stats = stats.fillna(0).reset_index()
-    fig = px.scatter(
-        stats,
-        x="total_emoji",
-        y="ratio",
-        hover_name="sender",
-        color_discrete_sequence=[NAVY_LIGHT],
-        hover_data={"negative_emoji": True, "ratio": ":.2%"},
-        title="Negatieve emoji-ratio vs totaal emoji-gebruik",
-        labels={"total_emoji": "Totaal emoji", "ratio": "Negatieve ratio"},
-    )
-    return _style_figure(fig)
-
-
 def _weekly_incident_frame(df: pd.DataFrame) -> pd.DataFrame:
     working = df.dropna(subset=["datetime"]).copy()
     working["date_only"] = pd.to_datetime(working["date_only"], errors="coerce")
@@ -500,7 +473,6 @@ INTERACTIVE_BUILDERS: dict[str, Callable[[pd.DataFrame], go.Figure]] = {
     "chat_activity_by_hour": _plot_chat_activity_by_hour,
     "chat_activity_weekday_weekend": _plot_chat_activity_weekday_weekend,
     "emoji_usage_by_hour": _plot_emoji_usage_by_hour,
-    "negative_reaction_scatter": _plot_negative_reaction_scatter,
     "incident_activity_correlation": _plot_incident_activity_correlation,
     "incident_discussion_timeline": _plot_incident_discussion_timeline,
     "time_series_activity": _plot_time_series_activity,
@@ -514,7 +486,6 @@ VIS_LABELS: dict[str, str] = {
     "incident_discussion_timeline": "Incidenten in de tijd",
     "chat_activity_weekday_weekend": "Weekdag vs weekend",
     "emoji_usage_by_hour": "Emoji kans per uur",
-    "negative_reaction_scatter": "Negatieve emoji-ratio",
     "incident_activity_correlation": "Activiteit vs incident correlatie",
     "time_series_activity": "Tijdreeks (15 min)",
     "time_series_autocorrelation": "Autocorrelatie",

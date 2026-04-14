@@ -99,9 +99,8 @@ def plot_poisson_dual_distribution(
     pmf1 = poisson.pmf(x_pmf, lam1) * n_incident if n_incident > 0 else np.zeros_like(x_pmf, dtype=float)
 
     plt.style.use(DEFAULT_PLOT_SETTINGS.matplotlib_style)
+    DEFAULT_PLOT_SETTINGS.apply_matplotlib_rcparams()
     fig, ax = plt.subplots(figsize=(9, 5.5))
-    fig.patch.set_facecolor("white")
-    ax.set_facecolor("white")
 
     # Bin edges covering the capped range
     bins = np.arange(0, x_max_pmf + 3) - 0.5
@@ -154,23 +153,19 @@ def plot_poisson_dual_distribution(
             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec=color_incident, lw=0.8, alpha=0.9),
         )
 
-    ax.set_xlabel("Berichten per dag", fontsize=11)
-    ax.set_ylabel("Aantal dagen", fontsize=11)
-    ax.set_title(
-        "Op incidentdagen is de Poisson-intensiteit meer dan 3\u00d7 zo hoog",
-        fontsize=12, fontweight="bold", pad=12,
-    )
-    ax.legend(fontsize=9.5, frameon=False, loc="upper right")
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.grid(axis="y", alpha=0.18, color="#D9D9D9")
-    ax.grid(axis="x", visible=False)
+    ax.set_xlabel("Berichten per dag")
+    ax.set_ylabel("Aantal dagen")
+    ax.set_title("Op incidentdagen is de Poisson-intensiteit meer dan 3× zo hoog")
+    ax.legend(fontsize=DEFAULT_PLOT_SETTINGS.legend_fontsize, frameon=False, loc="upper right")
+    ax.yaxis.grid(True)
+    ax.xaxis.grid(False)
 
     ax.text(
         0.02, 0.98,
-        "m_dag \u223c Pois(\u03bb)  \u00b7  alleen actieve dagen (n\u22651 bericht)",
+        "m_dag ∼ Pois(λ)  ·  alleen actieve dagen (n≥1 bericht)",
         transform=ax.transAxes, ha="left", va="top",
-        fontsize=8.5, color=DEFAULT_PLOT_SETTINGS.muted_text_color,
+        fontsize=DEFAULT_PLOT_SETTINGS.caption_fontsize,
+        color=DEFAULT_PLOT_SETTINGS.muted_text_color,
         style="italic",
     )
 
