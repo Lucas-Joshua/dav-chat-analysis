@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 import logging
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ MODULES = [
 ]
 
 
-def _load_registry() -> dict[str, VisualizationFn]:
+def load_registry() -> dict[str, VisualizationFn]:
     """Load and merge ``REGISTRY`` dictionaries from visualization modules.
 
     :return: Mapping from visualization names to callables.
@@ -35,6 +35,10 @@ def _load_registry() -> dict[str, VisualizationFn]:
         registry.update(module_registry)
 
     return registry
+
+
+# Alias kept for backwards compatibility
+_load_registry = load_registry
 
 
 def run_selected(
@@ -64,5 +68,5 @@ def run_selected(
             logger.info("Visualization: %s", name)
             try:
                 registry[name](df, out_dir=out_dir)
-            except Exception:
-                logger.exception("Visualization failed: %s", name)
+            except Exception as exc:
+                logger.exception("Visualization failed: %s — %s", name, exc)

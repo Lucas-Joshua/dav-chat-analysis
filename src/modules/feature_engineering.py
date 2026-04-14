@@ -133,6 +133,7 @@ def _determine_emoji_category(emojis: list[str]) -> tuple[str | None, str | None
     :rtype: tuple[str | None, str | None]
     """
 
+    emojis = list(emojis) if not isinstance(emojis, list) else emojis
     if not emojis:
         return None, None
 

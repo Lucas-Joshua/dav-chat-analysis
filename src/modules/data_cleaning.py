@@ -31,8 +31,39 @@ SYSTEM_EVENT_PATTERNS = (
     re.compile(rf"^(?P<date>{DATE_PATTERN}) - (?P<message>.+)$"),
 )
 DELETED_MESSAGE_PATTERN = re.compile(
-    r"^(?:This message was deleted\.?|Dit bericht is verwijderd\.?|"
+    r"^(?:This message was deleted(?:\s+by\s+admin\s+\S+)?\.?|"
+    r"Dit bericht is verwijderd\.?|"
     r"Je hebt dit bericht verwijderd\.?)$",
+    flags=re.IGNORECASE,
+)
+
+# WhatsApp system notifications that slip through as regular messages
+# (group membership events, encryption notices, etc.)
+SYSTEM_CONTENT_PATTERN = re.compile(
+    r"^(?:"
+    r".+\s+was added"
+    r"|.+\s+were added"
+    r"|.+\s+added\s+.+"
+    r"|.+\s+left"
+    r"|.+\s+joined using this group(?:'s|s) invite link"
+    r"|.+\s+joined via invite link"
+    r"|.+\s+changed the group (?:name|description|icon|settings)"
+    r"|.+\s+changed this group's icon"
+    r"|Messages and calls are end-to-end encrypted.*"
+    r"|Berichten en gesprekken zijn beveiligd.*"
+    r"|You were added"
+    r"|You changed the subject.*"
+    r"|You changed this group.*"
+    r"|\+\d[\d\s]+ was added"
+    r"|image omitted"
+    r"|video omitted"
+    r"|audio omitted"
+    r"|sticker omitted"
+    r"|GIF omitted"
+    r"|document omitted"
+    r"|Contact card omitted"
+    r"|<Media omitted>"
+    r")$",
     flags=re.IGNORECASE,
 )
 
@@ -227,9 +258,15 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
 
     df_clean["message"] = df_clean["original_message"]
 
+    msg_text = df_clean["message"].fillna("").astype(str)
     df_clean = df_clean.loc[
-        ~df_clean["message"].fillna("").astype(str).str.match(DELETED_MESSAGE_PATTERN)
+        ~msg_text.str.match(DELETED_MESSAGE_PATTERN)
+        & ~msg_text.str.match(SYSTEM_CONTENT_PATTERN)
     ].copy()
+
+    removed_system = msg_text.str.match(SYSTEM_CONTENT_PATTERN).sum()
+    if removed_system:
+        logger.info("Removed %d WhatsApp system notification messages", removed_system)
 
     df_clean["emoji_list"] = df_clean["message"].apply(extract_emojis)
     df_clean["contains_emoji"] = _build_boolean_feature(df_clean["emoji_list"])

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pandas as pd
+
+logger = logging.getLogger(__name__)
 
 from src.modules.feature_engineering import add_incident_bow_features
 from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
@@ -74,6 +77,34 @@ def _les6_output_path(
 
 
 
+def _build_feature_matrix(texts: list) -> "np.ndarray":
+    """Shared char-trigram + Manhattan distance + PCA pipeline."""
+    import numpy as np
+    from sklearn.feature_extraction.text import CountVectorizer
+    from sklearn.decomposition import PCA
+    from sklearn.metrics.pairwise import manhattan_distances
+
+    np.random.seed(42)
+    vec = CountVectorizer(analyzer="char", ngram_range=(3, 3))
+    X = vec.fit_transform(texts).toarray()
+    dist = manhattan_distances(X)
+    pca_dims = min(50, dist.shape[1], len(texts) - 1)
+    return PCA(n_components=pca_dims, random_state=42).fit_transform(dist)
+
+
+def _build_umap_embedding(X_reduced: "np.ndarray") -> "np.ndarray":
+    """Shared UMAP embedding — always identical for the same X_reduced."""
+    import numpy as np
+    import umap as umap_lib  # type: ignore[import-not-found]
+
+    np.random.seed(42)
+    reducer = umap_lib.UMAP(
+        n_components=2, n_neighbors=5, min_dist=0.3,
+        metric="euclidean", random_state=42, init="spectral",
+    )
+    return reducer.fit_transform(X_reduced)
+
+
 def incident_context_umap_analysis(
     df: pd.DataFrame,
     out_dir: str | Path | None = None,
@@ -98,25 +129,18 @@ def incident_context_umap_analysis(
     :rtype: None
     """
     import matplotlib.pyplot as plt
-    import matplotlib.patches as mpatches
     import numpy as np
     from scipy.stats import gaussian_kde
     from scipy.spatial import ConvexHull
 
-    import umap as umap_lib  # type: ignore[import-not-found]
-    from sklearn.feature_extraction.text import TfidfVectorizer
-
     sample = _prepare_context_sample(df, max_points=1600)
     texts = sample["message"].tolist()
+    is_incident = sample["incident_related"].to_numpy()
 
-    vectorizer = TfidfVectorizer(max_features=500, min_df=2, sublinear_tf=True)
-    X = vectorizer.fit_transform(texts).toarray()
-
-    reducer = umap_lib.UMAP(n_components=2, n_neighbors=15, min_dist=0.10, random_state=42)
-    emb = reducer.fit_transform(X)
+    X_reduced = _build_feature_matrix(texts)
+    emb = _build_umap_embedding(X_reduced)
     x = emb[:, 0]
     y = emb[:, 1]
-    is_incident = sample["incident_related"].to_numpy()
 
     x_inc = x[is_incident]
     y_inc = y[is_incident]
@@ -139,8 +163,8 @@ def incident_context_umap_analysis(
             ax.contourf(xx, yy, zz, levels=6, cmap="Greys", alpha=0.22, zorder=1)
             ax.contour(xx, yy, zz, levels=4, colors=["#AAAAAA"], linewidths=0.5,
                        alpha=0.45, zorder=2)
-        except Exception:
-            pass  # skip KDE if degenerate data
+        except Exception as exc:
+            logger.debug("KDE skipped (degenerate data): %s", exc)
 
     # --- Regular messages: small, transparent ---
     ax.scatter(x_reg, y_reg,
@@ -167,37 +191,25 @@ def incident_context_umap_analysis(
             ax.plot(hull_pts[:, 0], hull_pts[:, 1],
                     color=DEFAULT_PLOT_SETTINGS.danger_color,
                     linewidth=1.0, linestyle="--", alpha=0.50, zorder=4)
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug("Convex hull skipped: %s", exc)
 
-    # --- Insight annotation — anchored in the lower-right empty quadrant ---
-    cx, cy = float(np.median(x_inc)), float(np.median(y_inc))
-    x_range = x.max() - x.min()
-    y_range = y.max() - y.min()
-    # Text goes to lower-right area (typically empty in this manifold shape)
-    txt_x = x.min() + x_range * 0.62
-    txt_y = y.min() + y_range * 0.18
-    ax.annotate(
-        "Incidentberichten concentreren\nzich in een herkenbaar gebied\n"
-        "→ UMAP maakt dit patroon zichtbaar,\n   t-SNE niet",
-        xy=(cx, cy),
-        xytext=(txt_x, txt_y),
+    # --- Insight annotation — fixed in lower-left corner (empty space in this manifold) ---
+    ax.text(
+        0.01, 0.01,
+        "Geen apart cluster zichtbaar\nIncidentberichten zijn semantisch\ngeïntegreerd in de gewone wolk",
+        transform=ax.transAxes,
+        ha="left", va="bottom",
         fontsize=DEFAULT_PLOT_SETTINGS.annotation_fontsize,
         color=DEFAULT_PLOT_SETTINGS.danger_color,
-        arrowprops=dict(
-            arrowstyle="->,head_width=0.25",
-            color=DEFAULT_PLOT_SETTINGS.danger_color, lw=1.0,
-            connectionstyle="arc3,rad=0.25",
-        ),
         bbox=DEFAULT_PLOT_SETTINGS.annotation_box,
-        va="bottom",
     )
 
     ax.set_xlabel("UMAP dimensie 1")
     ax.set_ylabel("UMAP dimensie 2")
     ax.set_title(
-        "UMAP onthult ruimtelijke clustering van incidentberichten\n"
-        "Trigram-profielen · n_neighbors=15 · min_dist=0.10 · rood = incident-context"
+        "UMAP-projectie: incidentberichten vormen geen apart cluster\n"
+        "Karakter-trigrammen · n_neighbors=5 · min_dist=0.30 · rood = incident-context"
     )
     ax.legend(fontsize=DEFAULT_PLOT_SETTINGS.legend_fontsize,
               frameon=False, loc="upper left", markerscale=1.4)
@@ -219,6 +231,95 @@ def incident_context_umap_analysis(
     plt.close(fig)
 
 
+def incident_context_tsne_umap_comparison(
+    df: pd.DataFrame,
+    out_dir: str | Path | None = None,
+) -> None:
+    """Side-by-side t-SNE vs UMAP comparison using identical char-trigram features.
+
+    Both projections use the same TF-IDF char-trigram matrix so differences
+    are purely due to the reduction algorithm, not the input representation.
+
+    :param df: Processed chat dataframe.
+    :type df: pd.DataFrame
+    :param out_dir: Optional output directory.
+    :type out_dir: str | Path | None
+    :return: None.
+    :rtype: None
+    """
+    import matplotlib.pyplot as plt
+    import numpy as np
+    from sklearn.manifold import TSNE
+
+    sample = _prepare_context_sample(df, max_points=1600)
+    texts = sample["message"].tolist()
+    is_incident = sample["incident_related"].to_numpy()
+
+    # Shared feature matrix — identical to standalone UMAP function
+    X_reduced = _build_feature_matrix(texts)
+
+    # t-SNE on same matrix
+    np.random.seed(42)
+    tsne = TSNE(n_components=2, perplexity=30, metric="euclidean",
+                init="random", random_state=42, max_iter=1000)
+    emb_tsne = tsne.fit_transform(X_reduced)
+
+    # UMAP via shared helper — guaranteed identical to standalone
+    emb_umap = _build_umap_embedding(X_reduced)
+
+    plt.style.use(DEFAULT_PLOT_SETTINGS.matplotlib_style)
+    DEFAULT_PLOT_SETTINGS.apply_matplotlib_rcparams()
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+    fig.suptitle(
+        "t-SNE vs. UMAP op dezelfde karakter-trigrammen\n"
+        "Beide methodes, zelfde data — rood = incident-context",
+        fontsize=DEFAULT_PLOT_SETTINGS.title_fontsize,
+    )
+
+    config = [
+        (axes[0], emb_tsne, "t-SNE", "t-SNE dimensie 1", "t-SNE dimensie 2",
+         "Lokale structuur · perplexity=30",
+         "t-SNE compresseert lokale clusters\nmaar vervormt globale afstanden"),
+        (axes[1], emb_umap, "UMAP", "UMAP dimensie 1", "UMAP dimensie 2",
+         "Globale + lokale structuur · n_neighbors=5",
+         "UMAP behoudt globale structuur\nen is stabieler over runs"),
+    ]
+
+    for ax, emb, title, xlabel, ylabel, subtitle, note in config:
+        x, y = emb[:, 0], emb[:, 1]
+        x_reg, y_reg = x[~is_incident], y[~is_incident]
+        x_inc, y_inc = x[is_incident], y[is_incident]
+
+        ax.scatter(x_reg, y_reg, s=12, color=DEFAULT_PLOT_SETTINGS.neutral_color,
+                   alpha=0.28, linewidths=0, zorder=2,
+                   label=f"Regulier (n={len(x_reg)})")
+        ax.scatter(x_inc, y_inc, s=50, color=DEFAULT_PLOT_SETTINGS.danger_color,
+                   alpha=0.80, linewidths=0.4, edgecolors="white", zorder=4,
+                   label=f"Incident (n={len(x_inc)})")
+
+        ax.set_title(f"{title}\n{subtitle}",
+                     fontsize=DEFAULT_PLOT_SETTINGS.annotation_fontsize + 1)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        ax.legend(fontsize=DEFAULT_PLOT_SETTINGS.legend_fontsize,
+                  frameon=False, loc="upper right")
+        ax.yaxis.grid(True)
+        ax.xaxis.grid(False)
+        ax.text(0.02, 0.02, note, transform=ax.transAxes,
+                ha="left", va="bottom",
+                fontsize=DEFAULT_PLOT_SETTINGS.caption_fontsize,
+                color=DEFAULT_PLOT_SETTINGS.muted_text_color, style="italic",
+                bbox=dict(boxstyle="round,pad=0.3", facecolor="white",
+                          edgecolor="#CCCCCC", alpha=0.85))
+
+    fig.tight_layout()
+    out_path = _les6_output_path(out_dir, "incident_context_tsne_umap_comparison.png")
+    fig.savefig(out_path, dpi=DEFAULT_PLOT_SETTINGS.dpi)
+    plt.close(fig)
+
+
 REGISTRY = {
     "incident_context_umap_analysis": incident_context_umap_analysis,
+    "incident_context_tsne_umap_comparison": incident_context_tsne_umap_comparison,
 }

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import ast
+import logging
 import sys
 from pathlib import Path
 from typing import Callable
+
+logger = logging.getLogger(__name__)
 
 import numpy as np
 import pandas as pd
@@ -20,7 +23,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from src import config
-from src.visualizations.registry import _load_registry, run_selected
+from src.visualizations.registry import load_registry, run_selected
 
 NAVY = "#0B2545"
 NAVY_MID = "#1E3A5F"
@@ -48,6 +51,13 @@ def _load_data(csv_path: Path) -> pd.DataFrame:
         df["contains_emoji"] = df["has_emoji"].fillna(False).astype(bool)
     if "emoji_list" in df.columns:
         df["emoji_list"] = df["emoji_list"].apply(_parse_emoji_list)
+    # emoji_group is not saved to CSV — compute it on the fly
+    if "emoji_group" not in df.columns and "emoji_list" in df.columns:
+        try:
+            from src.modules.feature_engineering import add_emoji_category
+            df = add_emoji_category(df)
+        except (KeyError, ValueError) as exc:
+            logger.warning("Could not add emoji_group column: %s", exc)
     return df
 
 
@@ -92,8 +102,10 @@ def _apply_dashboard_theme() -> None:
             padding-top: 1.75rem;
         }}
         [data-testid="stSidebar"] {{
-            background: {SURFACE};
-            border-right: 1px solid {GRID};
+            display: none;
+        }}
+        [data-testid="collapsedControl"] {{
+            display: none;
         }}
         [data-testid="stHeader"] {{
             background: transparent;
@@ -304,7 +316,7 @@ def _plot_incident_activity_correlation(df: pd.DataFrame) -> go.Figure:
         weekly,
         x="total_message_count",
         y="incident_message_count",
-        trendline="ols",
+        trendline="lowess",
         color_discrete_sequence=[NAVY_LIGHT],
         hover_data={"week_start": True, "incident_ratio_pct": ":.2f"},
         title="Relatie: totaal activiteit vs incident-activiteit (week)",
@@ -426,49 +438,118 @@ def _plot_poisson_model(df: pd.DataFrame) -> go.Figure:
     return _style_figure(fig)
 
 
-def _plot_incident_context_projection(df: pd.DataFrame, method: str = "UMAP") -> go.Figure:
-    """Project messages into 2D using TF-IDF + UMAP and color by incident label."""
-    import umap as umap_lib  # type: ignore[import-not-found]
-    from sklearn.feature_extraction.text import TfidfVectorizer
+def _matched_bow_terms(text: str, terms: list[str]) -> str:
+    """Return comma-separated BoW terms that appear in *text*."""
+    import re
+    text_lower = text.lower()
+    matched = [t for t in terms if re.search(r"\b" + re.escape(t) + r"\b", text_lower)]
+    return ", ".join(matched) if matched else "-"
 
-    sample = df[["message", "is_incident_message"]].dropna(subset=["message"]).copy()
+
+def _build_incident_sample(df: pd.DataFrame, n_max: int = 700) -> pd.DataFrame:
+    """Return a balanced, shuffled sample of incident vs regular messages.
+
+    Selects relevant columns, filters short messages, and balances classes.
+
+    :param df: Processed chat dataframe.
+    :param n_max: Maximum messages per class.
+    :raises ValueError: If either class is empty after filtering.
+    :return: Balanced dataframe ready for vectorization.
+    """
+    keep_cols = ["message", "is_incident_message"]
+    if "datetime" in df.columns:
+        keep_cols.append("datetime")
+    if "sender" in df.columns:
+        keep_cols.append("sender")
+
+    sample = df[keep_cols].dropna(subset=["message"]).copy()
     sample["message"] = sample["message"].astype(str).str.strip()
     sample = sample[sample["message"].str.len() >= 8]
     incident = sample[sample["is_incident_message"] == 1]
     regular = sample[sample["is_incident_message"] == 0]
     if incident.empty or regular.empty:
         raise ValueError("Incident-context heeft beide klassen nodig.")
-    n_max = 700
-    balanced = pd.concat(
+    return pd.concat(
         [
             incident.sample(n=min(len(incident), n_max), random_state=42),
             regular.sample(n=min(len(regular), n_max), random_state=42),
         ],
         ignore_index=True,
-    ).sample(frac=1.0, random_state=42)
+    ).sample(frac=1.0, random_state=42).reset_index(drop=True)
 
+
+def _plot_incident_context_projection(df: pd.DataFrame, method: str = "UMAP") -> go.Figure:
+    """Project messages into 2D using TF-IDF + selected method, colored by incident label."""
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.decomposition import PCA
+    from sklearn.manifold import TSNE
+    from src.modules.feature_engineering import INCIDENT_BOW_TERMS
+
+    balanced = _build_incident_sample(df)
+
+    # Vectorize
     vectorizer = TfidfVectorizer(max_features=500, min_df=2, sublinear_tf=True)
     X = vectorizer.fit_transform(balanced["message"].tolist()).toarray()
-    reducer = umap_lib.UMAP(n_components=2, n_neighbors=15, min_dist=0.10, random_state=42)
-    emb = reducer.fit_transform(X)
 
-    embed_df = pd.DataFrame(
-        {
-            "x": emb[:, 0],
-            "y": emb[:, 1],
-            "incident_related": balanced["is_incident_message"].eq(1),
-        }
-    )
+    # Welke incident-BoW termen heeft dit bericht getriggerd?
+    bow_matches = [
+        _matched_bow_terms(msg, INCIDENT_BOW_TERMS)
+        for msg in balanced["message"].tolist()
+    ]
+
+    # Dimensiereductie op basis van gekozen methode
+    method_key = method.strip().upper().replace("-", "").replace("_", "")
+    if method_key == "PCA":
+        emb = PCA(n_components=2, random_state=42).fit_transform(X)
+        title = "Incident-context projectie (PCA)"
+    elif method_key == "TSNE":
+        n = len(balanced)
+        perplexity = min(30, max(5, n // 3))
+        emb = TSNE(
+            n_components=2, perplexity=perplexity, metric="euclidean",
+            init="random", random_state=42, max_iter=1000,
+        ).fit_transform(X)
+        title = "Incident-context projectie (t-SNE)"
+    else:  # UMAP
+        import umap as umap_lib  # type: ignore[import-not-found]
+        reducer = umap_lib.UMAP(
+            n_components=2, n_neighbors=15, min_dist=0.10,
+            random_state=42, init="random",  # random init: stabieler op sparse TF-IDF
+        )
+        emb = reducer.fit_transform(X)
+        title = "Incident-context projectie (UMAP)"
+
+    # Bouw plot-dataframe
+    embed_df = pd.DataFrame({
+        "x": emb[:, 0],
+        "y": emb[:, 1],
+        "incident_related": balanced["is_incident_message"].eq(1),
+        "bericht": balanced["message"].str[:120].str.replace("\n", " "),
+        "incident_termen": bow_matches,
+    })
+    if "datetime" in balanced.columns:
+        embed_df["datum"] = pd.to_datetime(balanced["datetime"]).dt.strftime("%Y-%m-%d")
+    if "sender" in balanced.columns:
+        embed_df["auteur"] = balanced["sender"]
+
+    # Hover kolommen
+    hover_cols = {"x": False, "y": False, "incident_related": False,
+                  "bericht": True, "incident_termen": True}
+    if "datum" in embed_df.columns:
+        hover_cols["datum"] = True
+    if "auteur" in embed_df.columns:
+        hover_cols["auteur"] = True
+
     fig = px.scatter(
         embed_df,
-        x="x",
-        y="y",
+        x="x", y="y",
         color="incident_related",
         color_discrete_map={False: SKY, True: INCIDENT},
-        title="Incident-context projectie (UMAP)",
+        title=title,
         labels={"incident_related": "Incident-gerelateerd"},
-        hover_data={"x": ":.3f", "y": ":.3f"},
+        hover_data=hover_cols,
     )
+    fig.update_traces(marker={"size": 7, "opacity": 0.75})
     return _style_figure(fig)
 
 
@@ -494,7 +575,7 @@ VIS_LABELS: dict[str, str] = {
     "time_series_activity": "Tijdreeks (15 min)",
     "time_series_autocorrelation": "Autocorrelatie",
     "poisson_model": "Poisson model",
-    "incident_context_projection": "Incident-context projectie",
+    "dimensiereductie": "Dimensiereductie",
 }
 
 BASIC_VISUALIZATIONS = [
@@ -503,73 +584,174 @@ BASIC_VISUALIZATIONS = [
     "incident_discussion_timeline",
     "emoji_usage_by_hour",
     "poisson_model",
+    "dimensiereductie",
 ]
+
+ALL_VISUALIZATIONS = [
+    "chat_activity_by_hour",
+    "overall_emoji_distribution",
+    "incident_discussion_timeline",
+    "chat_activity_weekday_weekend",
+    "emoji_usage_by_hour",
+    "incident_activity_correlation",
+    "time_series_activity",
+    "time_series_autocorrelation",
+    "poisson_model",
+    "dimensiereductie",
+]
+
+
+def _plot_dimensiereductie_vergelijking(df: pd.DataFrame) -> go.Figure:
+    """Interactieve t-SNE vs UMAP vergelijking met hover (BoW termen + datum + bericht)."""
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.manifold import TSNE
+    from plotly.subplots import make_subplots
+    from src.modules.feature_engineering import INCIDENT_BOW_TERMS
+
+    balanced = _build_incident_sample(df)
+
+    vectorizer = TfidfVectorizer(max_features=500, min_df=2, sublinear_tf=True)
+    X = vectorizer.fit_transform(balanced["message"].tolist()).toarray()
+
+    # Gedeelde hover data
+    bow_matches = [_matched_bow_terms(m, INCIDENT_BOW_TERMS) for m in balanced["message"]]
+    hover_msg = balanced["message"].str[:120].str.replace("\n", " ").tolist()
+    is_inc = balanced["is_incident_message"].eq(1).tolist()
+    datum = pd.to_datetime(balanced["datetime"]).dt.strftime("%Y-%m-%d").tolist() if "datetime" in balanced.columns else [""] * len(balanced)
+    auteur = balanced["sender"].tolist() if "sender" in balanced.columns else [""] * len(balanced)
+
+    # t-SNE embedding
+    n = len(balanced)
+    perplexity = min(30, max(5, n // 3))
+    emb_tsne = TSNE(n_components=2, perplexity=perplexity, metric="euclidean",
+                    init="random", random_state=42, max_iter=1000).fit_transform(X)
+
+    # UMAP embedding
+    import umap as umap_lib  # type: ignore[import-not-found]
+    emb_umap = umap_lib.UMAP(n_components=2, n_neighbors=15, min_dist=0.10,
+                              random_state=42, init="random").fit_transform(X)
+
+    fig = make_subplots(rows=1, cols=2,
+                        subplot_titles=["t-SNE · lokale structuur", "UMAP · globale + lokale structuur"])
+
+    for col_idx, (emb, name) in enumerate([(emb_tsne, "t-SNE"), (emb_umap, "UMAP")], start=1):
+        for label_val, label_name, color, symbol in [
+            (False, "Regulier", SKY, "circle"),
+            (True, "Incident", INCIDENT, "circle"),
+        ]:
+            mask = [inc == label_val for inc in is_inc]
+            x_pts = emb[mask, 0].tolist()
+            y_pts = emb[mask, 1].tolist()
+            custom = [
+                [hover_msg[i], bow_matches[i], datum[i], auteur[i]]
+                for i, m in enumerate(mask) if m
+            ]
+            fig.add_trace(
+                go.Scatter(
+                    x=x_pts, y=y_pts,
+                    mode="markers",
+                    name=label_name,
+                    legendgroup=label_name,
+                    showlegend=(col_idx == 1),
+                    marker=dict(color=color, size=7 if label_val else 5,
+                                opacity=0.85 if label_val else 0.45,
+                                line=dict(width=0.4, color="white") if label_val else dict(width=0)),
+                    customdata=custom,
+                    hovertemplate=(
+                        "<b>%{customdata[3]}</b> · %{customdata[2]}<br>"
+                        "💬 %{customdata[0]}<br>"
+                        "🔑 %{customdata[1]}<extra></extra>"
+                    ),
+                ),
+                row=1, col=col_idx,
+            )
+
+    fig.update_layout(
+        title_text="t-SNE vs UMAP · karakter-trigrammen · rood = incident-gerelateerd",
+        height=600,
+        template="simple_white",
+        font={"color": NAVY},
+        paper_bgcolor="white",
+        plot_bgcolor=SURFACE,
+        hoverlabel={"bgcolor": "white", "font_color": NAVY, "bordercolor": NAVY_LIGHT},
+        margin={"l": 40, "r": 20, "t": 80, "b": 40},
+    )
+    fig.update_xaxes(showgrid=True, gridcolor=GRID, zeroline=False)
+    fig.update_yaxes(showgrid=True, gridcolor=GRID, zeroline=False)
+    return fig
 
 
 def main() -> None:
     """Run Streamlit dashboard app."""
     st.set_page_config(page_title="DAV Chat Dashboard", page_icon="📊", layout="wide")
     _apply_dashboard_theme()
-    st.title("DAV Chat Dashboard")
-    st.caption(
-        "Visuele structuur volgens Gestalt: vergelijkbare kleuren voor vergelijkbare data, "
-        "duidelijke figuur/achtergrond en gegroepeerde controls."
-    )
 
     df = _load_data(config.PROCESSED_DIR / "clean_chat_processed.csv")
 
     min_date = df["date_only"].dropna().min()
     max_date = df["date_only"].dropna().max()
 
-    st.sidebar.header("Filters")
-    view_mode = st.sidebar.radio("Weergave", ["Basis", "Uitgebreid"], index=0)
-    selected_dates = st.sidebar.date_input(
-        "Datumrange",
-        value=(min_date, max_date) if min_date and max_date else None,
-        min_value=min_date,
-        max_value=max_date,
-    )
-    allowed_visualizations = (
-        BASIC_VISUALIZATIONS
-        if view_mode == "Basis"
-        else sorted([*INTERACTIVE_BUILDERS.keys(), "incident_context_projection"])
-    )
-    vis_options = [VIS_LABELS[name] for name in allowed_visualizations]
-    visualization_name = st.sidebar.selectbox(
-        "Interactieve visualisatie",
-        options=vis_options,
-    )
-    selected_visualization_key = allowed_visualizations[vis_options.index(visualization_name)]
-    context_method = "tSNE"
-    if selected_visualization_key == "incident_context_projection":
-        context_method = st.sidebar.selectbox(
-            "Context-methode",
-            options=["tSNE", "PCA", "UMAP"],
+    # Header + datumfilter inline (Elastic-stijl)
+    title_col, date_col = st.columns([3, 1])
+    with title_col:
+        st.title("DAV Chat Dashboard")
+    with date_col:
+        st.markdown("<div style='padding-top:1.6rem'></div>", unsafe_allow_html=True)
+        selected_dates = st.date_input(
+            "",
+            value=(min_date, max_date) if min_date and max_date else None,
+            min_value=min_date,
+            max_value=max_date,
+            label_visibility="collapsed",
         )
 
     filtered = _apply_filters(df, selected_dates)
-
     _render_kpis(filtered)
+    st.divider()
 
-    st.subheader("Interactieve visualisatie")
-    if view_mode == "Basis":
-        st.caption("Basisweergave toont alleen de belangrijkste grafieken. Kies 'Uitgebreid' voor alle analyses.")
-    try:
-        if selected_visualization_key == "incident_context_projection":
-            with st.spinner("Bereken embedding voor contextprojectie..."):
-                figure = _plot_incident_context_projection(filtered, method=context_method)
-        else:
-            figure = INTERACTIVE_BUILDERS[selected_visualization_key](filtered)
-        st.plotly_chart(figure, use_container_width=True)
-    except (KeyError, ValueError, RuntimeError) as exc:
-        st.warning(f"Visualisatie kon niet worden gemaakt: {exc}")
+    # Navigatie als tabs
+    tab_labels = [VIS_LABELS[k] for k in ALL_VISUALIZATIONS]
+    tabs = st.tabs(tab_labels)
 
+    for tab, key in zip(tabs, ALL_VISUALIZATIONS):
+        with tab:
+            try:
+                if key == "dimensiereductie":
+                    col_left, col_right = st.columns([3, 1])
+                    with col_right:
+                        weergave = st.radio(
+                            "Weergave",
+                            ["Vergelijking (t-SNE + UMAP)", "Enkel (kies methode)"],
+                            key="dim_weergave",
+                        )
+                    if weergave == "Vergelijking (t-SNE + UMAP)":
+                        with st.spinner("t-SNE en UMAP berekenen..."):
+                            figure = _plot_dimensiereductie_vergelijking(filtered)
+                        st.plotly_chart(figure, use_container_width=True)
+                    else:
+                        with col_right:
+                            method = st.selectbox(
+                                "Methode",
+                                ["UMAP", "tSNE", "PCA"],
+                                key="dim_methode",
+                            )
+                        with st.spinner("Embedding berekenen..."):
+                            figure = _plot_incident_context_projection(filtered, method=method)
+                        st.plotly_chart(figure, use_container_width=True)
+
+                else:
+                    figure = INTERACTIVE_BUILDERS[key](filtered)
+                    st.plotly_chart(figure, use_container_width=True)
+            except (KeyError, ValueError, RuntimeError) as exc:
+                st.warning(f"Visualisatie kon niet worden gemaakt: {exc}")
+
+    st.divider()
     with st.expander("Geavanceerd: pipeline-visualisaties genereren", expanded=False):
-        registry = _load_registry()
-        all_visualizations = sorted(registry.keys())
+        registry = load_registry()
+        all_vis = sorted(registry.keys())
         selected_to_generate = st.multiselect(
             "Selecteer visualisaties om te genereren (PNG)",
-            options=all_visualizations,
+            options=all_vis,
             default=[],
         )
         use_filtered = st.checkbox("Gebruik huidige filters voor generatie", value=False)
@@ -579,7 +761,7 @@ def main() -> None:
             with st.spinner("Visualisaties genereren..."):
                 run_selected(
                     generation_df.copy(),
-                    {name: name in selected_to_generate for name in all_visualizations},
+                    {name: name in selected_to_generate for name in all_vis},
                     out_dir=config.IMG_DIR,
                 )
             st.success(f"Klaar. Bestanden staan in `{config.IMG_DIR}`.")

@@ -80,8 +80,7 @@ dav-chat-analysis/
 │   │   ├── data_cleaning.py
 │   │   ├── anonymizer.py
 │   │   ├── preprocessor.py
-│   │   ├── feature_engineering.py
-│   │   └── author_stylometry.py
+│   │   └── feature_engineering.py
 │   └── visualizations/
 │       ├── registry.py
 │       ├── utils.py
@@ -177,7 +176,7 @@ Daardoor is de pipeline minder gebonden aan één specifieke chat of één expor
 
 ## Visualisaties Configureren
 
-De standaardselectie staat bovenin [src/pipeline.py](/Users/lucasjoshua/Documents/Opleiding/4_Data_Analysis_and_Visualisation/dav-chat-analysis/src/pipeline.py). Daar kun je:
+De standaardselectie staat bovenin [`src/pipeline.py`](src/pipeline.py). Daar kun je:
 
 - visualisaties aan of uit zetten via `DEFAULT_VISUALIZATION_SELECTIONS`
 - de featurebehoefte per visualisatie aanpassen via `VISUALIZATION_FEATURES`
