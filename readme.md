@@ -19,7 +19,15 @@ De parser is bewust generiek opgezet voor meerdere veelvoorkomende WhatsApp-expo
 
 ## Snel Starten
 
-Installeer dependencies:
+`uv` is een snelle Python package manager. Als je het nog niet hebt:
+
+```bash
+pip install uv
+# of
+curl -Ls https://astral.sh/uv/install.sh | sh
+```
+
+Installeer daarna de dependencies:
 
 ```bash
 uv sync
