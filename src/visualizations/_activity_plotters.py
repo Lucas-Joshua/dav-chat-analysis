@@ -84,15 +84,16 @@ def plot_chat_activity_by_hour(
 
     fig.update_layout(
         DEFAULT_PLOT_SETTINGS.base_plotly_layout(
-            margin={"l": 60, "r": 40, "t": 95, "b": 60},
+            margin={"l": 60, "r": 40, "t": 62, "b": 60},
         )
     )
     set_plotly_title(
         fig,
-        title="Patroon van chatactiviteit per uur",
+        title="Chatactiviteit piekt in de vroege avond",
         subtitle=(
-            f"{date_min} – {date_max} · rood = piekuur · "
-            "percentage = aandeel van totaal aantal berichten"
+            f"{date_min} – {date_max} · "
+            f"rood = piekuur ({peak_hour}:00) · "
+            f"≈{peak_pct:.1f}% van alle berichten"
         ),
     )
     fig.update_layout(height=480)

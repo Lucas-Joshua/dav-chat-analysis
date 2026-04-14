@@ -158,8 +158,31 @@ def set_plotly_title(
     :return: None.
     :rtype: None
     """
-    text = title if subtitle is None else f"{title}<br><sup>{subtitle}</sup>"
-    fig.update_layout(title={"text": text, "x": x, "xanchor": "center"})
+    title_html = f"<b>{title}</b>"
+
+    if subtitle is None:
+        text = title_html
+    else:
+        subtitle_html = subtitle.replace("\n", "<br>")
+        subtitle_html = (
+            f"<span style='font-size:0.82em;color:{DEFAULT_PLOT_SETTINGS.muted_text_color};"
+            f"font-weight:400'>{subtitle_html}</span>"
+        )
+        text = f"{title_html}<br>{subtitle_html}"
+
+    fig.update_layout(
+        title={
+            "text": text,
+            "x": x,
+            "xanchor": "center",
+            "y": 0.94,
+            "yanchor": "top",
+            "font": {
+                "size": DEFAULT_PLOT_SETTINGS.title_fontsize + 2,
+                "color": DEFAULT_PLOT_SETTINGS.text_color,
+            },
+        }
+    )
 
 
 def focus_colors(

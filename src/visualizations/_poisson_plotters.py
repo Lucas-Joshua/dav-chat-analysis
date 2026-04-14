@@ -16,6 +16,35 @@ from src.visualizations.plot_settings import DEFAULT_PLOT_SETTINGS
 from src.visualizations.utils import ensure_parent_dir, set_plotly_title, style_plotly_xy_axes
 
 
+def _hourly_message_series(df: pd.DataFrame) -> pd.Series:
+    """Aggregate message counts to hourly intervals."""
+    if "datetime" not in df.columns:
+        raise KeyError("datetime column not found in dataframe.")
+
+    working = df.copy()
+    working["datetime"] = pd.to_datetime(working["datetime"], errors="coerce")
+    working = working.dropna(subset=["datetime"])
+    return (
+        working.set_index("datetime")
+        .resample("1h")
+        .size()
+        .rename("count")
+    )
+
+
+def _expected_frequency_from_rates(
+    count_values: np.ndarray,
+    rates: np.ndarray,
+) -> np.ndarray:
+    """Return expected frequency per count under a possibly varying rate."""
+    return np.array([poisson.pmf(k, rates).sum() for k in count_values], dtype=float)
+
+
+def _fit_error(observed: np.ndarray, expected: np.ndarray) -> float:
+    """Compute a simple fit error that is easy to explain in the report."""
+    return float(np.sqrt(np.mean((observed - expected) ** 2)))
+
+
 def _classify_days(df: pd.DataFrame) -> tuple[pd.Series, pd.Series]:
     """Split daily message counts into normal days and incident days.
 
@@ -178,7 +207,7 @@ def plot_poisson_model(
     df: pd.DataFrame,
     out_path: str | Path = "img/poisson_model.png",
 ) -> None:
-    """Plot observed frequency versus Poisson expectation in one clear chart.
+    """Compare global vs time-dependent Poisson fits for hourly chat counts.
 
     :param df: Processed chat dataframe with a ``datetime`` column.
     :type df: pd.DataFrame
@@ -188,48 +217,36 @@ def plot_poisson_model(
     :rtype: None
     """
     out_path = ensure_parent_dir(out_path)
-
-    if "datetime" not in df.columns:
-        raise KeyError("datetime column not found in dataframe.")
-
     date_min = df["datetime"].min().strftime("%b %Y")
     date_max = df["datetime"].max().strftime("%b %Y")
+    ts = _hourly_message_series(df)
 
-    # --- Aggregate to an interpretable interval ---
-    ts_hourly: pd.Series = (
-        df.set_index("datetime")
-        .resample("1h")
-        .size()
-        .rename("count")
+    global_lambda = float(ts.mean())
+    count_vals = np.arange(0, int(ts.max()) + 1)
+    observed_freq = np.array([(ts == k).sum() for k in count_vals], dtype=float)
+
+    hourly_lambda = ts.groupby(ts.index.hour).mean().reindex(range(24), fill_value=0.0)
+    interval_rates = ts.index.hour.map(hourly_lambda).to_numpy(dtype=float)
+
+    expected_global = _expected_frequency_from_rates(
+        count_vals,
+        np.full(len(ts), global_lambda, dtype=float),
     )
-    if float(ts_hourly.mean()) < 2.0:
-        ts = (
-            df.set_index("datetime")
-            .resample("1d")
-            .size()
-            .rename("count")
-        )
-        interval_label = "dag"
-    else:
-        ts = ts_hourly
-        interval_label = "uur"
+    expected_time = _expected_frequency_from_rates(count_vals, interval_rates)
 
-    # λ = mean messages per gekozen interval (Poisson rate parameter)
-    lam: float = float(ts.mean())
-    n_intervals = len(ts)
+    global_rmse = _fit_error(observed_freq, expected_global)
+    time_rmse = _fit_error(observed_freq, expected_time)
+    rmse_gain = global_rmse - time_rmse
 
-    # --- Observed count distribution ---
-    max_count = int(ts.max())
-    count_vals = np.arange(0, max_count + 1)
-    observed_freq = np.array([(ts == k).sum() for k in count_vals])
-
-    # --- Poisson expected frequency ---
-    expected_freq = poisson.pmf(count_vals, lam) * n_intervals
-    threshold = int(poisson.ppf(0.99, lam))
+    threshold = int(poisson.ppf(0.99, global_lambda))
     outlier_share = float((ts > threshold).mean())
+    peak_hour = int(hourly_lambda.idxmax())
+    peak_lambda = float(hourly_lambda.loc[peak_hour])
+    x_max = min(int(ts.max()), int(global_lambda * 5) + 2)
 
     accent = DEFAULT_PLOT_SETTINGS.danger_color
     neutral = DEFAULT_PLOT_SETTINGS.neutral_color
+    model_color = DEFAULT_PLOT_SETTINGS.primary_color
 
     fig = go.Figure()
     fig.add_trace(
@@ -238,38 +255,86 @@ def plot_poisson_model(
             y=observed_freq,
             name="Waargenomen",
             marker_color=neutral,
-            opacity=0.8,
+            opacity=0.45,
+            hovertemplate="Berichten per uur: %{x}<br>Waargenomen frequentie: %{y}<extra></extra>",
         )
     )
-
     fig.add_trace(
         go.Scatter(
             x=count_vals,
-            y=expected_freq,
+            y=expected_global,
             mode="lines+markers",
-            name=f"Poisson (λ = {lam:.2f})",
-            line=dict(color=accent, width=2.5),
-            marker=dict(size=5),
+            name="Globale Poisson",
+            line=dict(color="rgba(47,109,179,0.65)", width=1.8, dash="dash"),
+            marker=dict(size=3.5, color="rgba(47,109,179,0.65)"),
+            hovertemplate="Globale Poisson<br>k=%{x}<br>Verwachte frequentie: %{y:.0f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=count_vals,
+            y=expected_time,
+            mode="lines+markers",
+            name="Tijdsafhankelijke Poisson",
+            line=dict(color=accent, width=3.2),
+            marker=dict(size=5.5, color=accent),
+            hovertemplate="Tijdsafhankelijke Poisson<br>k=%{x}<br>Verwachte frequentie: %{y:.0f}<extra></extra>",
         )
     )
 
+    global_idx = min(max(1, int(round(global_lambda))), len(count_vals) - 1)
+    time_idx = min(max(1, int(round(peak_lambda))), len(count_vals) - 1)
+
     fig.add_annotation(
-        x=lam,
-        y=float(expected_freq[int(round(lam))]),
-        text=f"λ = {lam:.2f}",
+        x=count_vals[time_idx],
+        y=float(expected_time[time_idx]),
+        text=f"Tijdsafhankelijk beter<br>RMSE {time_rmse:.1f}",
+        showarrow=True,
+        arrowhead=2,
+        ax=55,
+        ay=-30,
+        font=dict(size=10, color=accent),
+        bgcolor="rgba(255,255,255,0.95)",
+        bordercolor=accent,
+        borderwidth=1,
+    )
+    fig.add_annotation(
+        x=count_vals[global_idx],
+        y=float(expected_global[global_idx]),
+        text=f"Globale λ<br>RMSE {global_rmse:.1f}",
         showarrow=True,
         arrowhead=2,
         ax=40,
-        ay=-35,
-        font=dict(size=11, color=accent),
+        ay=40,
+        font=dict(size=9, color=model_color),
+        bgcolor="rgba(255,255,255,0.92)",
+        bordercolor="rgba(47,109,179,0.65)",
+        borderwidth=1,
+    )
+    fig.add_annotation(
+        xref="paper",
+        yref="paper",
+        x=0.98,
+        y=0.93,
+        text=(
+            f"Verbetering: {rmse_gain:.1f} RMSE<br>"
+            f"Piekuur λ<sub>{peak_hour:02d}:00</sub> = {peak_lambda:.2f}"
+        ),
+        showarrow=False,
+        align="right",
+        font=dict(size=10, color=DEFAULT_PLOT_SETTINGS.text_color),
+        bgcolor="rgba(255,255,255,0.92)",
+        bordercolor="#CCCCCC",
+        borderwidth=1,
     )
 
     style_plotly_xy_axes(
         fig,
-        x_title=f"Berichten per {interval_label}-interval",
+        x_title="Berichten per uur-interval",
         y_title="Frequentie (# intervallen)",
-        x_range=(-0.5, min(max_count, int(lam * 5) + 1)),
+        x_range=(-0.5, x_max),
     )
+    fig.update_xaxes(dtick=1, tickmode="linear")
 
     fig.update_layout(
         DEFAULT_PLOT_SETTINGS.base_plotly_layout(
@@ -278,13 +343,17 @@ def plot_poisson_model(
     )
     set_plotly_title(
         fig,
-        title=f"Verdeling van chatactiviteit per {interval_label}",
-        subtitle=f"Meeste intervallen hebben lage aantallen; uitschieters (>P99={threshold}) ≈ {outlier_share:.1%}",
+        title="Uurafhankelijke Poisson past beter",
+        subtitle=(
+            f"{date_min} – {date_max} · per uur-interval · "
+            f"globale λ vlakt dagritme te veel uit · "
+            f"uitschieters (>P99={threshold}) ≈ {outlier_share:.1%}"
+        ),
     )
     fig.update_layout(
         height=520,
-        legend=dict(orientation="h", y=1.02, x=0.5, xanchor="center"),
         bargap=0.1,
+        showlegend=False,
     )
 
     fig.write_image(out_path, scale=2)

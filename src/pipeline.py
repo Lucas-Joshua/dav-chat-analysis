@@ -14,17 +14,17 @@ from src.modules.preprocessor import ChatPreprocessor
 from src.visualizations import run_selected
 
 DEFAULT_VISUALIZATION_SELECTIONS: dict[str, bool] = {
-    "overall_emoji_distribution": True,
+    "overall_emoji_distribution": False,
     "emoji_heatmap": False,   # removed from output per user request
     "chat_activity_by_hour": True,
-    "chat_activity_weekday_weekend": True,
-    "time_series_autocorrelation": True,
-    "poisson_model": True,
-    "incident_discussion_timeline": True,
-    "incident_activity_correlation": True,
-    "incident_context_projection": True,
-    "incident_context_comparison": True,
-    "incident_context_umap_analysis": True,
+    "chat_activity_weekday_weekend": False,
+    "time_series_autocorrelation": False,
+    "poisson_model": False,
+    "incident_discussion_timeline": False,
+    "incident_activity_correlation": False,
+    "incident_context_projection": False,
+    "incident_context_comparison": False,
+    "incident_context_umap_analysis": False,
 }
 
 VISUALIZATION_FEATURES: dict[str, set[str]] = {

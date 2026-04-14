@@ -1,4 +1,4 @@
-"""Public wrappers and registry for Poisson statistical modeling (Les 5)."""
+"""Public wrappers and registry for Poisson statistical modeling (Les 4)."""
 
 from __future__ import annotations
 
@@ -26,8 +26,6 @@ def poisson_model(df, out_dir: str | Path | None = None) -> None:
             "poisson_model.png",
         ),
     )
-
-
 REGISTRY = {
     "poisson_model": poisson_model,
 }
